@@ -31,10 +31,13 @@ class _InventoryListState extends State<InventoryList> {
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: _items,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
-          final items = snapshot.data!;
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          final items = snapshot.data ?? [];
           if (items.isEmpty) {
             return Center(child: Text('No items yet. Tap + to add.'));
           }

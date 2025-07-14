@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
+  /// Initialize Supabase – replace with your own URL & anon key.
   static Future<SupabaseService> init() async {
     await Supabase.initialize(
       url: 'https://doxhjonwexqsrksakpqo.supabase.co',
@@ -9,43 +10,44 @@ class SupabaseService {
     return SupabaseService();
   }
 
-  final client = Supabase.instance.client;
+  final SupabaseClient client = Supabase.instance.client;
 
+  /// Fetch all inventory items
   Future<List<Map<String, dynamic>>> fetchInventory() async {
-    final List<dynamic> data = await client
-        .from('inventory')
+    final data = await client
+        .from('inventory_items')
         .select()
-        .limit(100)
-        .order('id')
-        .then((value) => value as List<dynamic>);
+        .order('expiry_date', ascending: true);
     return List<Map<String, dynamic>>.from(data);
   }
 
+  /// Insert a new inventory item
   Future<void> addItem({required String name, required DateTime expiry}) async {
-    await client.from('inventory').insert({
+    await client.from('inventory_items').insert({
       'name': name,
       'expiry_date': expiry.toIso8601String(),
     });
   }
 
+  /// Log waste
   Future<void> logWaste(String itemId, int qty, [String? reason]) async {
-    final Map<String, dynamic> data = {
+    final entry = {
       'item_id': itemId,
       'quantity': qty,
-      'date': DateTime.now().toIso8601String(),
+      'logged_at': DateTime.now().toIso8601String(),
     };
     if (reason != null && reason.isNotEmpty) {
-      data['reason'] = reason;
+      entry['reason'] = reason;
     }
-
-    await client.from('waste_log').insert(data);
+    await client.from('waste_logs').insert(entry);
   }
 
-  Future<void> offerDonation(String itemId, String recipient) async {
+  /// Offer a donation
+  Future<void> offerDonation(String itemId, String recipientInfo) async {
     await client.from('donations').insert({
       'item_id': itemId,
-      'recipient': recipient,
-      'date': DateTime.now().toIso8601String(),
+      'recipient_info': recipientInfo,
+      'offered_at': DateTime.now().toIso8601String(),
     });
   }
 }
