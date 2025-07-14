@@ -34,8 +34,6 @@ class SupabaseService {
       'quantity': qty,
       'date': DateTime.now().toIso8601String(),
     };
-
-    // Add reason to the data only if it's provided and not empty
     if (reason != null && reason.isNotEmpty) {
       data['reason'] = reason;
     }
