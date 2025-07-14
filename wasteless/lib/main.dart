@@ -6,10 +6,6 @@ import 'pages/inventory_list.dart';
 import 'pages/add_item_page.dart';
 import 'pages/waste_log_page.dart';
 import 'pages/donation_page.dart';
-import 'package:flutter/material.dart';
-import '../services/supabase_service.dart';
-
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -86,4 +82,3 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
-
