@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'inventory_list.dart';
+import '../services/supabase_service.dart';
 
 class AuthGate extends StatefulWidget {
   @override
@@ -32,7 +33,7 @@ class _AuthGateState extends State<AuthGate> {
     final pass = _passController.text;
     try {
       if (_isLogin) {
-        await Supabase.instance.client.auth.signIn(email: email, password: pass);
+        await Supabase.instance.client.auth.signInWithPassword(email: email, password: pass);
       } else {
         await Supabase.instance.client.auth.signUp(email: email, password: pass);
       }

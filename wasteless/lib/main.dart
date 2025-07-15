@@ -1,21 +1,27 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'services/supabase_service.dart';
-import 'pages/inventory_list.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'pages/add_item_page.dart';
-import 'pages/waste_log_page.dart';
+import 'pages/auth_page.dart';
 import 'pages/donation_page.dart';
+import 'pages/inventory_list.dart';
+import 'pages/waste_log_page.dart';
+import 'services/supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final supa = await SupabaseService.init();
-  runApp(WasteLessApp(supa));
+  await Supabase.initialize(
+    url: 'https://doxhjonwexqsrksakpqo.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRveGhqb253ZXhxc3Jrc2FrcHFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDE5ODAsImV4cCI6MjA2Nzg3Nzk4MH0.YMUqqYHnkIT2tD8wlSJu3qePnLaXXPBZvYUmHf41RGc',
+  );
+  runApp(const WasteLessApp());
 }
 
 class WasteLessApp extends StatelessWidget {
-  final SupabaseService supa;
-  const WasteLessApp(this.supa, {Key? key}) : super(key: key);
+  const WasteLessApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -25,11 +31,11 @@ class WasteLessApp extends StatelessWidget {
         primarySwatch: Colors.green,
         textTheme: GoogleFonts.openSansTextTheme(),
       ),
-      home: HomePage(supa: supa),
+      home: AuthGate(),
       routes: {
-        AddItemPage.route: (_) => AddItemPage(supa: supa),
-        WasteLogPage.route: (_) => WasteLogPage(supa: supa),
-        DonationPage.route: (_) => DonationPage(supa: supa),
+        AddItemPage.route: (_) => AddItemPage(supa: SupabaseService()),
+        WasteLogPage.route: (_) => WasteLogPage(supa: SupabaseService()),
+        DonationPage.route: (_) => DonationPage(supa: SupabaseService()),
       },
     );
   }
@@ -37,7 +43,7 @@ class WasteLessApp extends StatelessWidget {
 
 class HomePage extends StatefulWidget {
   final SupabaseService supa;
-  const HomePage({required this.supa, Key? key}) : super(key: key);
+  const HomePage({required this.supa, super.key});
 
   @override
   _HomePageState createState() => _HomePageState();
