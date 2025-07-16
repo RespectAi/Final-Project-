@@ -24,14 +24,8 @@ class _WasteLogPageState extends State<WasteLogPage> {
   @override
   void initState() {
     super.initState();
-    // prepare list in case we're in list-mode
-    _logs = widget.supa.client
-        .from('waste_logs')
-        .select(
-          'id, item_id, quantity, reason, logged_at, inventory_items(name)',
-        )
-        .order('logged_at', ascending: false)
-        .then((data) => List<Map<String, dynamic>>.from(data));
+    // load logs
+    _refreshLogs();
   }
 
   Future<void> _submit(String itemId) async {
@@ -41,25 +35,17 @@ class _WasteLogPageState extends State<WasteLogPage> {
 
   Future<void> _refreshLogs() async {
     setState(() {
-      _logs = widget.supa.client
-          .from('waste_logs')
-          .select(
-            'id, item_id, quantity, reason, logged_at, inventory_items(name)',
-          )
-          .order('logged_at', ascending: false)
-          .then((data) => List<Map<String, dynamic>>.from(data));
+      _logs = widget.supa.fetchWasteLogs();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // see if an itemId was passed in:
     final args = ModalRoute.of(context)!.settings.arguments;
     final itemId = args is String ? args : null;
 
     if (itemId != null) {
-      // —–––––––––––––––––––––––––––––––––––––––
-      // FORM MODE: Log a new waste entry for that item
+      // FORM MODE
       return Scaffold(
         appBar: AppBar(title: Text('Log Waste')),
         body: Padding(
@@ -90,8 +76,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
         ),
       );
     } else {
-      // —–––––––––––––––––––––––––––––––––––––––
-      // LIST MODE: Show all waste logs
+      // LIST MODE
       return Scaffold(
         appBar: AppBar(title: Text('All Waste Logs')),
         body: RefreshIndicator(
@@ -123,6 +108,37 @@ class _WasteLogPageState extends State<WasteLogPage> {
                       title: Text('$itemName — ${log['quantity']}'),
                       subtitle: Text(
                         '${log['reason'] ?? 'no reason'} • $formatted',
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(Icons.delete, color: Colors.redAccent),
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: Text('Delete entry?'),
+                              content: Text(
+                                'Remove this waste-log permanently?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok == true) {
+                            await widget.supa.deleteWasteLog(
+                              log['id'].toString(),
+                            );
+                            await _refreshLogs();
+                          }
+                        },
                       ),
                     ),
                   );

@@ -53,13 +53,39 @@ class SupabaseService {
     await client.from('waste_logs').insert(entry);
   }
 
+  /// Delete a waste log by its id
+  Future<void> deleteWasteLog(String id) async {
+  await client
+    .from('waste_logs')
+    .delete()
+    .eq('id', id);
+  }
 
   /// Offer a donation
   Future<void> offerDonation(String itemId, String recipientInfo) async {
-    await client.from('donations').insert({
+    final entry = {
       'item_id': itemId,
       'recipient_info': recipientInfo,
       'offered_at': DateTime.now().toIso8601String(),
-    });
+      'user_id': client.auth.currentUser!.id,
+    };
+    await client.from('donations').insert(entry);
   }
+
+  /// Fetch all donation entries, joining in item name
+  Future<List<Map<String, dynamic>>> fetchDonations() async {
+    final data = await client
+        .from('donations')
+        .select(
+          'id, item_id, recipient_info, offered_at, inventory_items(name)',
+        )
+        .order('offered_at', ascending: false);
+    return List<Map<String, dynamic>>.from(data);
+  }
+  
+  /// Delete a donation by its id
+  Future<void> deleteDonation(String id) async {
+    await client.from('donations').delete().eq('id', id);
+  }
+
 }
