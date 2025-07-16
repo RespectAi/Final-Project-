@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'inventory_list.dart';
 import '../services/supabase_service.dart';
+import '../main.dart';
 
 class AuthGate extends StatefulWidget {
   @override
@@ -21,7 +22,7 @@ class _AuthGateState extends State<AuthGate> {
       final session = data.session;
       if (session != null) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => InventoryList(supa: SupabaseService())),
+          MaterialPageRoute(builder: (_) => HomePage(supa: SupabaseService())),
         );
       }
     });
