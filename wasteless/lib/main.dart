@@ -2,13 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'services/supabase_service.dart';
 
 import 'pages/add_item_page.dart';
 import 'pages/auth_page.dart';
 import 'pages/donation_page.dart';
 import 'pages/inventory_list.dart';
 import 'pages/waste_log_page.dart';
-import 'services/supabase_service.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +64,9 @@ class _HomePageState extends State<HomePage> {
     ]);
   }
 
+// Removed duplicate initState method
+   
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -87,4 +91,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  
 }

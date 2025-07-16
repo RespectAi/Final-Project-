@@ -21,6 +21,17 @@ class SupabaseService {
     return List<Map<String, dynamic>>.from(data);
   }
 
+  /// Fetch all waste log entries, joining in item name
+  Future<List<Map<String, dynamic>>> fetchWasteLogs() async {
+    final data = await client
+        .from('waste_logs')
+        .select(
+          'id, item_id, quantity, reason, logged_at, inventory_items(name)',
+        )
+        .order('logged_at', ascending: false);
+    return List<Map<String, dynamic>>.from(data);
+  }
+
   /// Insert a new inventory item
   Future<void> addItem({required String name, required DateTime expiry}) async {
     await client.from('inventory_items').insert({
