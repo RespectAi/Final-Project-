@@ -46,12 +46,13 @@ class SupabaseService {
       'item_id': itemId,
       'quantity': qty,
       'logged_at': DateTime.now().toIso8601String(),
+      // add this:
+      'user_id': Supabase.instance.client.auth.currentUser!.id,
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
     };
-    if (reason != null && reason.isNotEmpty) {
-      entry['reason'] = reason;
-    }
     await client.from('waste_logs').insert(entry);
   }
+
 
   /// Offer a donation
   Future<void> offerDonation(String itemId, String recipientInfo) async {
