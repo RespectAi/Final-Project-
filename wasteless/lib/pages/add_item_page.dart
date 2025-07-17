@@ -14,11 +14,12 @@ class _AddItemPageState extends State<AddItemPage> {
   final _formKey = GlobalKey<FormState>();
   String _name = '';
   DateTime _expiry = DateTime.now().add(Duration(days: 7));
+  int _quantity = 1;
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-    await widget.supa.addItem(name: _name, expiry: _expiry);
+    await widget.supa.addItem(name: _name, expiry: _expiry, quantity: _quantity);
     Navigator.pop(context);
   }
 
@@ -38,6 +39,18 @@ class _AddItemPageState extends State<AddItemPage> {
                 onSaved: (v) => _name = v!.trim(),
                 validator: (v) => v!.isEmpty ? 'Required' : null,
               ),
+
+              SizedBox(height: 16),
+              TextFormField(
+                decoration: InputDecoration(labelText: 'Quantity'),
+                keyboardType: TextInputType.number,
+                initialValue: '1',
+                onSaved: (v) => _quantity = int.tryParse(v!) ?? 1,
+                validator: (v) => (int.tryParse(v!) == null || int.parse(v) < 1)
+                    ? 'Enter a positive number'
+                    : null,
+              ),
+
               SizedBox(height: 16),
               Row(
                 children: [

@@ -53,12 +53,13 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   final List<Widget> _pages = [];
+  final GlobalKey<InventoryListState> _invKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _pages.addAll([
-      InventoryList(supa: widget.supa),
+      InventoryList(key: _invKey, supa: widget.supa),
       WasteLogPage(supa: widget.supa),
       DonationPage(supa: widget.supa),
     ]);
@@ -88,8 +89,7 @@ class _HomePageState extends State<HomePage> {
               child: Icon(Icons.add),
               onPressed: () {
                 Navigator.pushNamed(context, AddItemPage.route).then((_) {
-                  // after adding, refresh inventory:
-                  setState(() {});
+                  _invKey.currentState?.refresh();
                 });
               },
             )

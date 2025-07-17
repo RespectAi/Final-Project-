@@ -6,11 +6,17 @@ class InventoryList extends StatefulWidget {
   const InventoryList({required this.supa, Key? key}) : super(key: key);
 
   @override
-  _InventoryListState createState() => _InventoryListState();
+  InventoryListState createState() => InventoryListState();
 }
 
-class _InventoryListState extends State<InventoryList> {
+class InventoryListState extends State<InventoryList> {
   late Future<List<Map<String, dynamic>>> _items;
+
+  Future<void> refresh() async {
+    setState(() {
+      _items = widget.supa.fetchInventory();
+    });
+  }
 
   @override
   void initState() {
