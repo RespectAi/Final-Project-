@@ -73,13 +73,28 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Text('WasteLess Dashboard'),
         actions: [
-          IconButton(
-            icon: Icon(Icons.add),
-            onPressed: () => Navigator.pushNamed(context, AddItemPage.route),
-          ),
+          // IconButton(
+          //   icon: Icon(Icons.add),
+          //   onPressed: () => Navigator.pushNamed(context, AddItemPage.route),
+          // ),
         ],
       ),
+
       body: _pages[_currentIndex],
+
+      // FAB only on Inventory tab:
+      floatingActionButton: _currentIndex == 0
+          ? FloatingActionButton(
+              child: Icon(Icons.add),
+              onPressed: () {
+                Navigator.pushNamed(context, AddItemPage.route).then((_) {
+                  // after adding, refresh inventory:
+                  setState(() {});
+                });
+              },
+            )
+          : null,
+
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (idx) => setState(() => _currentIndex = idx),
