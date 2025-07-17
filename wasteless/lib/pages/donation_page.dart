@@ -37,7 +37,7 @@ class _DonationPageState extends State<DonationPage> {
     await widget.supa.offerDonation(itemId, info);
     // ensure list is updated when we pop back
     await _refreshDonations();
-    Navigator.pop(context);
+     Navigator.pushReplacementNamed(context, DonationPage.route);
   }
 
   @override

@@ -30,7 +30,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
 
   Future<void> _submit(String itemId) async {
     await widget.supa.logWaste(itemId, _qty, _reason);
-    Navigator.pop(context);
+    Navigator.pushReplacementNamed(context, WasteLogPage.route);
   }
 
   Future<void> _refreshLogs() async {
