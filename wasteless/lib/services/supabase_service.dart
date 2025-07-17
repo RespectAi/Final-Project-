@@ -12,43 +12,49 @@ class SupabaseService {
 
   final SupabaseClient client = Supabase.instance.client;
 
-  /// Fetch all inventory items
+  /// Fetch only this user’s inventory
   Future<List<Map<String, dynamic>>> fetchInventory() async {
+    final uid = client.auth.currentUser!.id;
     final data = await client
         .from('inventory_items')
         .select()
+        .eq('user_id', uid) // ← filter by user
         .order('expiry_date', ascending: true);
     return List<Map<String, dynamic>>.from(data);
   }
 
-  /// Fetch all waste log entries, joining in item name
+  /// Fetch only this user’s waste logs
   Future<List<Map<String, dynamic>>> fetchWasteLogs() async {
+    final uid = client.auth.currentUser!.id;
     final data = await client
         .from('waste_logs')
         .select(
           'id, item_id, quantity, reason, logged_at, inventory_items(name)',
         )
+        .eq('user_id', uid) // ← filter
         .order('logged_at', ascending: false);
     return List<Map<String, dynamic>>.from(data);
   }
 
-  /// Insert a new inventory item
+  /// Insert a new inventory item FOR THIS USER
   Future<void> addItem({required String name, required DateTime expiry}) async {
+    final uid = client.auth.currentUser!.id;
     await client.from('inventory_items').insert({
       'name': name,
       'expiry_date': expiry.toIso8601String(),
+      'user_id': uid, // ← stamp with user
     });
   }
 
-  /// Log waste
+  /// Log waste FOR THIS USER
   Future<void> logWaste(String itemId, int qty, [String? reason]) async {
+    final uid = client.auth.currentUser!.id;
     final entry = {
       'item_id': itemId,
       'quantity': qty,
       'logged_at': DateTime.now().toIso8601String(),
-      // add this:
-      'user_id': Supabase.instance.client.auth.currentUser!.id,
-      if (reason != null && reason.isNotEmpty) 'reason': reason,
+      'user_id': uid, // ← stamp
+      if (reason?.isNotEmpty ?? false) 'reason': reason,
     };
     await client.from('waste_logs').insert(entry);
   }
@@ -61,24 +67,26 @@ class SupabaseService {
     .eq('id', id);
   }
 
-  /// Offer a donation
+  /// Offer a donation FOR THIS USER
   Future<void> offerDonation(String itemId, String recipientInfo) async {
-    final entry = {
+    final uid = client.auth.currentUser!.id;
+    await client.from('donations').insert({
       'item_id': itemId,
       'recipient_info': recipientInfo,
       'offered_at': DateTime.now().toIso8601String(),
-      'user_id': client.auth.currentUser!.id,
-    };
-    await client.from('donations').insert(entry);
+      'user_id': uid, // ← stamp
+    });
   }
 
-  /// Fetch all donation entries, joining in item name
+  /// Fetch only this user’s donations
   Future<List<Map<String, dynamic>>> fetchDonations() async {
+    final uid = client.auth.currentUser!.id;
     final data = await client
         .from('donations')
         .select(
           'id, item_id, recipient_info, offered_at, inventory_items(name)',
         )
+        .eq('user_id', uid) // ← filter
         .order('offered_at', ascending: false);
     return List<Map<String, dynamic>>.from(data);
   }

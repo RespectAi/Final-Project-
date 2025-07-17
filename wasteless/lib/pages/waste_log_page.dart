@@ -101,7 +101,10 @@ class _WasteLogPageState extends State<WasteLogPage> {
                   final log = logs[i];
                   final when = DateTime.parse(log['logged_at']);
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
-                  final itemName = (log['inventory_items'] as Map)['name'];
+                  final inv = log['inventory_items'] as Map<String, dynamic>?;
+                  final itemName = inv != null
+                      ? inv['name'] as String
+                      : 'Unknown Item';
                   return Card(
                     margin: EdgeInsets.symmetric(vertical: 4),
                     child: ListTile(

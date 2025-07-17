@@ -93,7 +93,10 @@ class _DonationPageState extends State<DonationPage> {
                   final d = list[i];
                   final when = DateTime.parse(d['offered_at']);
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
-                  final itemName = (d['inventory_items'] as Map)['name'];
+                  final inv = d['inventory_items'] as Map<String, dynamic>?;
+                  final itemName = inv != null
+                      ? inv['name'] as String
+                      : 'Unknown Item';
                   return Card(
                     margin: EdgeInsets.symmetric(vertical: 4),
                     child: ListTile(
