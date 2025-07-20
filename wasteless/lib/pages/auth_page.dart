@@ -4,6 +4,10 @@ import '../services/supabase_service.dart';
 import '../main.dart';
 
 class AuthGate extends StatefulWidget {
+
+ final SupabaseService supa;
+ const AuthGate({Key? key, required this.supa}) : super(key: key);
+
   @override
   _AuthGateState createState() => _AuthGateState();
 }
@@ -21,7 +25,7 @@ class _AuthGateState extends State<AuthGate> {
       final session = data.session;
       if (session != null) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => HomePage(supa: SupabaseService())),
+          MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)),
         );
       }
     });

@@ -71,8 +71,6 @@ class InventoryListState extends State<InventoryList> {
                         ? 'Expires in $daysLeft day(s) ${hoursLeft}h'
                         : 'Expired ${-daysLeft} day(s) ago',
                   ),
-
-                  // single trailing with both countdown and menu
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -88,19 +86,48 @@ class InventoryListState extends State<InventoryList> {
                       ),
                       SizedBox(width: 12),
                       PopupMenuButton<String>(
-                        onSelected: (val) {
+                        onSelected: (val) async {
                           if (val == 'waste') {
-                            Navigator.pushNamed(
-                              context,
-                              '/waste',
-                              arguments: item['id'],
-                            ).then((_) => _refresh());
+                            await widget.supa.logWaste(
+                              item['id'].toString(),
+                              1,
+                            );
+                            await refresh();
                           } else if (val == 'donate') {
-                            Navigator.pushNamed(
-                              context,
-                              '/donate',
-                              arguments: item['id'],
-                            ).then((_) => _refresh());
+                            // show a dialog to input recipient info, then:
+                            await widget.supa.offerDonation(
+                              item['id'].toString(),
+                              '',
+                            );
+                            await refresh();
+                          } else if (val == 'delete') {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: Text('Delete item?'),
+                                content: Text(
+                                  'Remove this product permanently?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              await widget.supa.deleteInventoryItem(
+                                item['id'].toString(),
+                              );
+                              await refresh();
+                            }
                           }
                         },
                         itemBuilder: (_) => [
@@ -109,6 +136,7 @@ class InventoryListState extends State<InventoryList> {
                             child: Text('Log Waste'),
                           ),
                           PopupMenuItem(value: 'donate', child: Text('Donate')),
+                          PopupMenuItem(value: 'delete', child: Text('Delete')),
                         ],
                       ),
                     ],
