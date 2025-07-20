@@ -51,38 +51,71 @@ class InventoryListState extends State<InventoryList> {
             padding: EdgeInsets.all(8),
             itemCount: items.length,
             itemBuilder: (_, i) {
-              final item = items[i];
+               final item = items[i];
               final expiry = DateTime.parse(item['expiry_date']);
-              final daysLeft = expiry.difference(DateTime.now()).inDays;
+              final now = DateTime.now();
+              final diff = expiry.difference(now);
+              final daysLeft = diff.inDays;
+              final hoursLeft = diff.inHours % 24;
+
               return Card(
                 margin: EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 elevation: 2,
                 child: ListTile(
                   title: Text(item['name']),
                   subtitle: Text(
                     daysLeft >= 0
-                        ? 'Expires in $daysLeft day(s)'
+                        ? 'Expires in $daysLeft day(s) ${hoursLeft}h'
                         : 'Expired ${-daysLeft} day(s) ago',
                   ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (val) {
-                      if (val == 'waste') {
-                        Navigator.pushNamed(context, '/waste', arguments: item['id'])
-                            .then((_) => _refresh());
-                      }
-                      if (val == 'donate') {
-                        Navigator.pushNamed(context, '/donate', arguments: item['id'])
-                            .then((_) => _refresh());
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      PopupMenuItem(value: 'waste', child: Text('Log Waste')),
-                      PopupMenuItem(value: 'donate', child: Text('Donate')),
+
+                  // single trailing with both countdown and menu
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 20,
+                        color: Colors.grey[700],
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        daysLeft >= 0 ? '$daysLeft d ${hoursLeft}h' : '–',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      SizedBox(width: 12),
+                      PopupMenuButton<String>(
+                        onSelected: (val) {
+                          if (val == 'waste') {
+                            Navigator.pushNamed(
+                              context,
+                              '/waste',
+                              arguments: item['id'],
+                            ).then((_) => _refresh());
+                          } else if (val == 'donate') {
+                            Navigator.pushNamed(
+                              context,
+                              '/donate',
+                              arguments: item['id'],
+                            ).then((_) => _refresh());
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: 'waste',
+                            child: Text('Log Waste'),
+                          ),
+                          PopupMenuItem(value: 'donate', child: Text('Donate')),
+                        ],
+                      ),
                     ],
                   ),
                 ),
               );
+
             },
           );
         },

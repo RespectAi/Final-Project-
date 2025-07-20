@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 
+
 class AddItemPage extends StatefulWidget {
   static const route = '/add';
   final SupabaseService supa;
@@ -15,11 +16,19 @@ class _AddItemPageState extends State<AddItemPage> {
   String _name = '';
   DateTime _expiry = DateTime.now().add(Duration(days: 7));
   int _quantity = 1;
+  int _remindDays = 1;
+  int _remindHours = 0;
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-    await widget.supa.addItem(name: _name, expiry: _expiry, quantity: _quantity);
+    await widget.supa.addItem(
+      name: _name,
+      expiry: _expiry,
+      quantity: _quantity,
+     reminderDaysBefore: _remindDays,
+     reminderHoursBefore: _remindHours,
+    );
     Navigator.pop(context);
   }
 
@@ -50,6 +59,23 @@ class _AddItemPageState extends State<AddItemPage> {
                     ? 'Enter a positive number'
                     : null,
               ),
+
+              // after your quantity TextFormField…
+              TextFormField(
+                decoration: InputDecoration(
+                  labelText: 'Remind me _ days before',
+                ),
+                keyboardType: TextInputType.number,
+                initialValue: '1',
+                onSaved: (v) => _remindDays = int.parse(v!),
+              ),
+              TextFormField(
+                decoration: InputDecoration(labelText: 'And _ hours before'),
+                keyboardType: TextInputType.number,
+                initialValue: '0',
+                onSaved: (v) => _remindHours = int.parse(v!),
+              ),
+
 
               SizedBox(height: 16),
               Row(

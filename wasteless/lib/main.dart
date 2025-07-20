@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 
+
+
 import 'pages/add_item_page.dart';
 import 'pages/auth_page.dart';
 import 'pages/donation_page.dart';
@@ -13,6 +15,7 @@ import 'pages/waste_log_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Supabase.initialize(
     url: 'https://doxhjonwexqsrksakpqo.supabase.co',
     anonKey:
@@ -80,12 +83,12 @@ class _HomePageState extends State<HomePage> {
           // ),
         ],
       ),
-
+        
       body: _pages[_currentIndex],
-
+       floatingActionButton: _currentIndex == 0
+?
       // FAB only on Inventory tab:
-      floatingActionButton: _currentIndex == 0
-          ? FloatingActionButton(
+           FloatingActionButton(
               child: Icon(Icons.add),
               onPressed: () {
                 Navigator.pushNamed(context, AddItemPage.route).then((_) {

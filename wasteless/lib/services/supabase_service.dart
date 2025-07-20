@@ -39,13 +39,17 @@ class SupabaseService {
   /// Insert a new inventory item FOR THIS USER
   Future<void> addItem(
     {required String name, required DateTime expiry, required int quantity,
-    }) 
+    required int reminderDaysBefore,
+    required int reminderHoursBefore,
+  }) 
   async {
     final uid = client.auth.currentUser!.id;
     await client.from('inventory_items').insert({
       'name': name,
       'expiry_date': expiry.toIso8601String(),
       'quantity': quantity,
+      'reminder_days_before': reminderDaysBefore,
+      'reminder_hours_before': reminderHoursBefore,
       'user_id': uid, // ← stamp with user
     });
   }
