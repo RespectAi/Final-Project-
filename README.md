@@ -14,6 +14,8 @@ WasteLess is a mobile application that helps users track, manage, and share surp
 6. [Development & Deployment](#development--deployment)
 7. [Next Steps](#next-steps)
 
+**Pitch deck link:** https://wasteless-smart-househol-52lytur.gamma.site/
+
 ---
 
 ## Problem & Solution
