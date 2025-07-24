@@ -115,13 +115,18 @@ WasteLess is a mobile application that helps users track, manage, and share surp
 
 ## Next Steps
 
-- Implement user authentication and onboarding flow
-- Build inventory CRUD screens in Flutter
-- Integrate Supabase Auth and Database SDK
-- Set up push notifications for expiry alerts
-- Design donation offering and map view
-- Gather feedback via beta testing
+- Implement user authentication and onboarding flow ✅
+- Build inventory CRUD screens in Flutter ✅
+- Integrate Supabase Auth and Database SDK ✅
+- Set up push notifications for expiry alerts ✅
+- Design donation offering and map view ✅
+- Gather feedback via beta testing ✅
 
+**Upcoming Features (Pending):**
+- Fridges feature (managing multiple storage locations)
+- QR code scanner for quick item entry
+- Categories feature for standardized product types
+- Major UI refinement, styling, and animations
 
 ---
 
