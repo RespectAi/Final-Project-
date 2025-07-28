@@ -14,6 +14,10 @@ class WasteLogPage extends StatefulWidget {
 }
 
 class _WasteLogPageState extends State<WasteLogPage> {
+  // **Declare your route args here—no initializers using context!**
+  String? itemId;
+  String itemName = '';
+
   // for the "form" mode
   int _qty = 1;
   String _reason = '';
@@ -24,8 +28,19 @@ class _WasteLogPageState extends State<WasteLogPage> {
   @override
   void initState() {
     super.initState();
-    // load logs
     _refreshLogs();
+  }
+
+  bool _initialized = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ✅ Only here do we access context
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
+    if (args != null) {
+      itemId   = args['id'];
+      itemName = args['name'] ?? '';
+    }
   }
 
   Future<void> _submit(String itemId) async {
@@ -41,13 +56,12 @@ class _WasteLogPageState extends State<WasteLogPage> {
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)!.settings.arguments;
-    final itemId = args is String ? args : null;
-
-    if (itemId != null) {
+    debugPrint('Building WasteLogPage, itemId=$itemId, _logs=${_logs}');
+    // **Use only the instance vars here—no ModalRoute calls!**
+    if (itemId != null && itemId!.isNotEmpty) {
       // FORM MODE
       return Scaffold(
-        appBar: AppBar(title: Text('Log Waste')),
+        appBar: AppBar(title: Text('Log Waste: $itemName')),
         body: Padding(
           padding: EdgeInsets.all(16),
           child: Column(
@@ -68,7 +82,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
               ),
               Spacer(),
               ElevatedButton(
-                onPressed: () => _submit(itemId),
+                onPressed: () => _submit(itemId!),
                 child: Text('Submit'),
               ),
             ],
@@ -102,16 +116,12 @@ class _WasteLogPageState extends State<WasteLogPage> {
                   final when = DateTime.parse(log['logged_at']);
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
                   final inv = log['inventory_items'] as Map<String, dynamic>?;
-                  final itemName = inv != null
-                      ? inv['name'] as String
-                      : 'Unknown Item';
+                  final invName = inv != null ? inv['name'] as String : 'Unknown Item';
                   return Card(
                     margin: EdgeInsets.symmetric(vertical: 4),
                     child: ListTile(
-                      title: Text('$itemName — ${log['quantity']}'),
-                      subtitle: Text(
-                        '${log['reason'] ?? 'no reason'} • $formatted',
-                      ),
+                      title: Text('$invName — ${log['quantity']}'),
+                      subtitle: Text('${log['reason'] ?? 'no reason'} • $formatted'),
                       trailing: IconButton(
                         icon: Icon(Icons.delete, color: Colors.redAccent),
                         onPressed: () async {
@@ -119,13 +129,10 @@ class _WasteLogPageState extends State<WasteLogPage> {
                             context: context,
                             builder: (_) => AlertDialog(
                               title: Text('Delete entry?'),
-                              content: Text(
-                                'Remove this waste-log permanently?',
-                              ),
+                              content: Text('Remove this waste-log permanently?'),
                               actions: [
                                 TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
+                                  onPressed: () => Navigator.pop(context, false),
                                   child: Text('Cancel'),
                                 ),
                                 TextButton(
@@ -136,9 +143,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
                             ),
                           );
                           if (ok == true) {
-                            await widget.supa.deleteWasteLog(
-                              log['id'].toString(),
-                            );
+                            await widget.supa.deleteWasteLog(log['id'].toString());
                             await _refreshLogs();
                           }
                         },

@@ -28,12 +28,29 @@ class SupabaseService {
     final uid = client.auth.currentUser!.id;
     final data = await client
         .from('inventory_items')
-        .select()
+        .select('''
+         id,
+         name,
+         expiry_date,
+         quantity,
+         inventory_item_categories (
+          category_id,
+          categories ( name, icon_url )
+      )
+    ''')
         .eq('user_id', uid) // ← filter by user
         .order('expiry_date', ascending: true);
     return List<Map<String, dynamic>>.from(data);
   }
 
+   /// Fetch the full list of (pre‐seeded) categories
+  Future<List<Map<String, dynamic>>> fetchCategories() async {
+    final data = await client
+        .from('categories')
+        .select('id, name, icon_url')
+        .order('name');
+    return List<Map<String, dynamic>>.from(data);
+  } 
   /// Fetch only this user’s waste logs
   Future<List<Map<String, dynamic>>> fetchWasteLogs() async {
     final uid = client.auth.currentUser!.id;
@@ -47,24 +64,43 @@ class SupabaseService {
     return List<Map<String, dynamic>>.from(data);
   }
 
-  /// Insert a new inventory item FOR THIS USER
-  Future<void> addItem(
-    {required String name, required DateTime expiry, required int quantity,
+  /// Insert a new parameter 'categoryIds' FOR THIS USER
+  Future<void> addItem({
+    required String name,
+    required DateTime expiry,
+    required int quantity,
     required int reminderDaysBefore,
     required int reminderHoursBefore,
-  }) 
-  async {
+    required List<String> categoryIds,
+  }) async {
     final uid = client.auth.currentUser!.id;
-    await client.from('inventory_items').insert({
-      'name': name,
-      'expiry_date': expiry.toIso8601String(),
-      'quantity': quantity,
-      'reminder_days_before': reminderDaysBefore,
-      'reminder_hours_before': reminderHoursBefore,
-      'user_id': uid, // ← stamp with user
-    });
+    // 1) insert the item
+    final res = await client
+        .from('inventory_items')
+        .insert({
+          'name': name,
+          'expiry_date': expiry.toIso8601String(),
+          'quantity': quantity,
+          'reminder_days_before': reminderDaysBefore,
+          'reminder_hours_before': reminderHoursBefore,
+          'user_id': uid,
+        })
+        .select('id')
+        .single();
+    final itemId = res['id'] as String;
 
-    // 2) schedule notification
+    // 2) link to categories
+    await client
+        .from('inventory_item_categories')
+        .insert(
+          categoryIds
+              .map(
+                (catId) => {'inventory_item_id': itemId, 'category_id': catId},
+              )
+              .toList(),
+        );
+
+    // 3) schedule notification
     final notifyTime = expiry.subtract(
       Duration(days: reminderDaysBefore, hours: reminderHoursBefore),
     );

@@ -73,9 +73,6 @@ class WasteLessApp extends StatelessWidget {
   }
 }
 
-
-
-
 class HomePage extends StatefulWidget {
   final SupabaseService supa;
   const HomePage({required this.supa, super.key});

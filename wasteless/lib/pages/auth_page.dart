@@ -48,6 +48,7 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+     debugPrint('Building AuthGate, isLogin=$_isLogin, error=$_error');
     return Scaffold(
       appBar: AppBar(title: Text(_isLogin ? 'Login' : 'Sign Up')),
       body: Center(

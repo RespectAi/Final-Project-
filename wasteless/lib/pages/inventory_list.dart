@@ -32,6 +32,7 @@ class InventoryListState extends State<InventoryList> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('Building InventoryList, items future=$_items');
     return RefreshIndicator(
       onRefresh: _refresh,
       child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -52,6 +53,13 @@ class InventoryListState extends State<InventoryList> {
             itemCount: items.length,
             itemBuilder: (_, i) {
                final item = items[i];
+
+             // ←— ADD THESE LINES RIGHT HERE:
+              final links = item['inventory_item_categories'] as List<dynamic>;
+              final cats = links
+                .map((link) => link['categories'] as Map<String, dynamic>)
+                  .toList();
+
               final expiry = DateTime.parse(item['expiry_date']);
               final now = DateTime.now();
               final diff = expiry.difference(now);
@@ -74,6 +82,20 @@ class InventoryListState extends State<InventoryList> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+
+                      // 1) First show your category icons
+                      ...cats.map(
+                        (c) => Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Image.network(
+                            c['icon_url'],
+                            width: 20,
+                            height: 20,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+
                       Icon(
                         Icons.access_time,
                         size: 20,
@@ -141,6 +163,7 @@ class InventoryListState extends State<InventoryList> {
                       ),
                     ],
                   ),
+                  
                 ),
               );
 
