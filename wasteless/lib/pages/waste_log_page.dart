@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
+import '../widgets/common.dart';
+
 
 class WasteLogPage extends StatefulWidget {
   static const route = '/waste';
@@ -14,15 +16,10 @@ class WasteLogPage extends StatefulWidget {
 }
 
 class _WasteLogPageState extends State<WasteLogPage> {
-  // **Declare your route args here—no initializers using context!**
   String? itemId;
   String itemName = '';
-
-  // for the "form" mode
   int _qty = 1;
   String _reason = '';
-
-  // for the "list" mode
   late Future<List<Map<String, dynamic>>> _logs;
 
   @override
@@ -31,14 +28,12 @@ class _WasteLogPageState extends State<WasteLogPage> {
     _refreshLogs();
   }
 
-  bool _initialized = false;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // ✅ Only here do we access context
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
     if (args != null) {
-      itemId   = args['id'];
+      itemId = args['id'];
       itemName = args['name'] ?? '';
     }
   }
@@ -56,60 +51,56 @@ class _WasteLogPageState extends State<WasteLogPage> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('Building WasteLogPage, itemId=$itemId, _logs=${_logs}');
-    // **Use only the instance vars here—no ModalRoute calls!**
     if (itemId != null && itemId!.isNotEmpty) {
-      // FORM MODE
       return Scaffold(
-        appBar: AppBar(title: Text('Log Waste: $itemName')),
+        appBar:gradientAppBar('Log Waste: $itemName'),
         body: Padding(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           child: Column(
             children: [
               TextFormField(
-                decoration: InputDecoration(labelText: 'Reason (optional)'),
+                decoration: const InputDecoration(labelText: 'Reason (optional)'),
                 onChanged: (v) => _reason = v.trim(),
               ),
-              SizedBox(height: 16),
-              Text('Quantity wasted:'),
-              Slider(
-                value: _qty.toDouble(),
-                min: 1,
-                max: 20,
-                divisions: 19,
-                label: '$_qty',
-                onChanged: (v) => setState(() => _qty = v.toInt()),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Quantity wasted:'),
+                  const SizedBox(width: 12),
+                  IconButton(onPressed: () => setState(() => _qty = (_qty - 1).clamp(1, 999)), icon: const Icon(Icons.remove)),
+                  Text('$_qty'),
+                  IconButton(onPressed: () => setState(() => _qty = (_qty + 1).clamp(1, 999)), icon: const Icon(Icons.add)),
+                ],
               ),
-              Spacer(),
-              ElevatedButton(
-                onPressed: () => _submit(itemId!),
-                child: Text('Submit'),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(onPressed: () => _submit(itemId!), child: const Text('Submit')),
               ),
             ],
           ),
         ),
       );
     } else {
-      // LIST MODE
       return Scaffold(
-        appBar: AppBar(title: Text('All Waste Logs')),
+        appBar:gradientAppBar('All Waste Logs'),
         body: RefreshIndicator(
           onRefresh: _refreshLogs,
           child: FutureBuilder<List<Map<String, dynamic>>>(
             future: _logs,
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator());
+                return const Center(child: CircularProgressIndicator());
               }
               if (snap.hasError) {
                 return Center(child: Text('Error: ${snap.error}'));
               }
               final logs = snap.data ?? [];
               if (logs.isEmpty) {
-                return Center(child: Text('No waste logged yet.'));
+                return const Center(child: Text('No waste logged yet.'));
               }
               return ListView.builder(
-                padding: EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
                 itemCount: logs.length,
                 itemBuilder: (_, i) {
                   final log = logs[i];
@@ -117,36 +108,57 @@ class _WasteLogPageState extends State<WasteLogPage> {
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
                   final inv = log['inventory_items'] as Map<String, dynamic>?;
                   final invName = inv != null ? inv['name'] as String : 'Unknown Item';
-                  return Card(
-                    margin: EdgeInsets.symmetric(vertical: 4),
-                    child: ListTile(
-                      title: Text('$invName — ${log['quantity']}'),
-                      subtitle: Text('${log['reason'] ?? 'no reason'} • $formatted'),
-                      trailing: IconButton(
-                        icon: Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () async {
-                          final ok = await showDialog<bool>(
-                            context: context,
-                            builder: (_) => AlertDialog(
-                              title: Text('Delete entry?'),
-                              content: Text('Remove this waste-log permanently?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: Text('Delete'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (ok == true) {
-                            await widget.supa.deleteWasteLog(log['id'].toString());
-                            await _refreshLogs();
-                          }
-                        },
+                  return Dismissible(
+                    key: Key(log['id'].toString()),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      color: Colors.redAccent,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 16),
+                      child: const Icon(Icons.delete, color: Colors.white),
+                    ),
+                    confirmDismiss: (_) async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text('Delete entry?'),
+                          content: const Text('Remove this waste-log permanently?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                          ],
+                        ),
+                      );
+                      return ok == true;
+                    },
+                    onDismissed: (_) async {
+                      await widget.supa.deleteWasteLog(log['id'].toString());
+                      await _refreshLogs();
+                    },
+                    child: Card(
+                      child: ListTile(
+                        title: Text('$invName — ${log['quantity']}'),
+                        subtitle: Text('${log['reason'] ?? 'no reason'} • $formatted'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.redAccent),
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text('Delete entry?'),
+                                content: const Text('Remove this waste-log permanently?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              await widget.supa.deleteWasteLog(log['id'].toString());
+                              await _refreshLogs();
+                            }
+                          },
+                        ),
                       ),
                     ),
                   );

@@ -13,17 +13,17 @@ import 'pages/donation_page.dart';
 import 'pages/inventory_list.dart';
 import 'pages/waste_log_page.dart';
 import 'services/supabase_service.dart';
-
+import 'widgets/common.dart'; //
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1) Timezone setup
+  // timezone setup
   tz.initializeTimeZones();
   final localTz = await FlutterNativeTimezone.getLocalTimezone();
   tz.setLocalLocation(tz.getLocation(localTz));
 
-  // 2) Notification plugin init
+  // notification plugin init
   final flutterLocal = FlutterLocalNotificationsPlugin();
   await flutterLocal.initialize(
     InitializationSettings(
@@ -32,16 +32,20 @@ void main() async {
     ),
   );
 
+  // Initialize Supabase once
   await Supabase.initialize(
     url: 'https://doxhjonwexqsrksakpqo.supabase.co',
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRveGhqb253ZXhxc3Jrc2FrcHFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDE5ODAsImV4cCI6MjA2Nzg3Nzk4MH0.YMUqqYHnkIT2tD8wlSJu3qePnLaXXPBZvYUmHf41RGc',
   );
-  // 3) Start app, passing plugin
+
+  // create single instance of SupabaseService and pass the plugin in
+  final supa = SupabaseService(flutterLocal);
+
   runApp(WasteLessApp(
-   flutterLocal: flutterLocal,
-   supa: SupabaseService(flutterLocal),
- ));
+    flutterLocal: flutterLocal,
+    supa: supa,
+  ));
 }
 
 class WasteLessApp extends StatelessWidget {
@@ -50,24 +54,64 @@ class WasteLessApp extends StatelessWidget {
   const WasteLessApp({
     Key? key,
     required this.flutterLocal,
-   required this.supa,
+    required this.supa,
   }) : super(key: key);
+
+  // Reusable gradient AppBar used throughout the app
+  static PreferredSizeWidget gradientAppBar(String title) {
+    return AppBar(
+      title: Text(title),
+      elevation: 0,
+      centerTitle: true,
+      backgroundColor: Colors.transparent,
+      flexibleSpace: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF2E7D32), Color(0xFF0277BD)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final seed = const Color(0xFF2E7D32); // vegetable green
     return MaterialApp(
       title: 'WasteLess',
       theme: ThemeData(
-        primarySwatch: Colors.green,
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: seed),
         textTheme: GoogleFonts.openSansTextTheme(),
+        scaffoldBackgroundColor: Colors.grey[50],
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        cardTheme: CardThemeData( // <-- FIXED: use CardTheme not CardThemeData
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+          ),
+        ),
       ),
-      home: AuthGate(supa: SupabaseService(flutterLocal)),
+      home: AuthGate(supa: supa),
       routes: {
         AddItemPage.route: (_) => AddItemPage(supa: supa),
-        WasteLogPage.route: (_) =>
-            WasteLogPage(supa: supa),
-        DonationPage.route: (_) =>
-            DonationPage(supa: supa),
+        WasteLogPage.route: (_) => WasteLogPage(supa: supa),
+        DonationPage.route: (_) => DonationPage(supa: supa),
       },
     );
   }
@@ -100,12 +144,17 @@ class _HomePageState extends State<HomePage> {
   Future<void> _rescheduleAll() async {
     final items = await widget.supa.fetchInventory();
     for (var item in items) {
-      final expiry = DateTime.parse(item['expiry_date']);
-      final days = item['reminder_days_before'] as int? ?? 0;
-      final hours = item['reminder_hours_before'] as int? ?? 0;
-      final notifyTime = expiry.subtract(Duration(days: days, hours: hours));
-      if (notifyTime.isAfter(DateTime.now())) {
-        // TODO: Call notification scheduling here, e.g. widget.supa.local.zonedSchedule(...)
+      try {
+        final expiry = DateTime.parse(item['expiry_date']);
+        final days = (item['reminder_days_before'] as int?) ?? 0;
+        final hours = (item['reminder_hours_before'] as int?) ?? 0;
+        final notifyTime = expiry.subtract(Duration(days: days, hours: hours));
+        if (notifyTime.isAfter(DateTime.now())) {
+          // If you want to re-schedule notifications on app start, call a method in SupabaseService.
+          // widget.supa.scheduleNotificationForItem(...);
+        }
+      } catch (_) {
+        // ignore parse errors
       }
     }
   }
@@ -113,16 +162,11 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('WasteLess Dashboard'),
-        actions: [
-          // Add actions if needed
-        ],
-      ),
+      appBar:gradientAppBar('WasteLess Dashboard'),
       body: _pages[_currentIndex],
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
-              child: Icon(Icons.add),
+              child: const Icon(Icons.add),
               onPressed: () {
                 Navigator.pushNamed(context, AddItemPage.route).then((_) {
                   _invKey.currentState?.refresh();

@@ -1,5 +1,9 @@
+// lib/pages/inventory_list.dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
+import '../widgets/common.dart';
+
 
 class InventoryList extends StatefulWidget {
   final SupabaseService supa;
@@ -32,32 +36,30 @@ class InventoryListState extends State<InventoryList> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('Building InventoryList, items future=$_items');
     return RefreshIndicator(
       onRefresh: _refresh,
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: _items,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
           final items = snapshot.data ?? [];
           if (items.isEmpty) {
-            return Center(child: Text('No items yet. Tap + to add.'));
+            return const Center(child: Text('No items yet. Tap + to add.'));
           }
           return ListView.builder(
-            padding: EdgeInsets.all(8),
+            padding: const EdgeInsets.all(8),
             itemCount: items.length,
             itemBuilder: (_, i) {
-               final item = items[i];
+              final item = items[i];
 
-             // ←— ADD THESE LINES RIGHT HERE:
-              final links = item['inventory_item_categories'] as List<dynamic>;
+              final links = item['inventory_item_categories'] as List<dynamic>? ?? [];
               final cats = links
-                .map((link) => link['categories'] as Map<String, dynamic>)
+                  .map((link) => (link['categories'] as Map<String, dynamic>? ?? {}))
                   .toList();
 
               final expiry = DateTime.parse(item['expiry_date']);
@@ -66,107 +68,110 @@ class InventoryListState extends State<InventoryList> {
               final daysLeft = diff.inDays;
               final hoursLeft = diff.inHours % 24;
 
-              return Card(
-                margin: EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 2,
-                child: ListTile(
-                  title: Text(item['name']),
-                  subtitle: Text(
-                    daysLeft >= 0
-                        ? 'Expires in $daysLeft day(s) ${hoursLeft}h'
-                        : 'Expired ${-daysLeft} day(s) ago',
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+              final quantity = item['quantity'] ?? 1;
+              final firstCat = cats.isNotEmpty ? cats.first as Map<String, dynamic> : null;
+              final catIcon = firstCat != null ? (firstCat['icon_url'] as String?) : null;
+              final name = item['name'] as String? ?? 'Unnamed';
 
-                      // 1) First show your category icons
-                      ...cats.map(
-                        (c) => Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: Image.network(
-                            c['icon_url'],
-                            width: 20,
-                            height: 20,
+              return Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  leading: Stack(
+                    alignment: Alignment.topRight,
+                    children: [
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: Colors.green[50],
+                        child: catIcon != null && catIcon.isNotEmpty
+                            ? ClipOval(
+                                child: Image.network(catIcon, width: 44, height: 44, fit: BoxFit.cover),
+                              )
+                            : const Icon(Icons.eco, size: 30),
+                      ),
+                      Positioned(
+                        right: -6,
+                        top: -6,
+                        child: CircleAvatar(
+                          radius: 10,
+                          backgroundColor: Colors.blueAccent,
+                          child: Text(
+                            '$quantity',
+                            style: const TextStyle(fontSize: 10, color: Colors.white),
                           ),
                         ),
-                      ),
-                      SizedBox(width: 8),
-
-                      Icon(
-                        Icons.access_time,
-                        size: 20,
-                        color: Colors.grey[700],
-                      ),
-                      SizedBox(width: 4),
+                      )
+                    ],
+                  ),
+                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 6),
                       Text(
-                        daysLeft >= 0 ? '$daysLeft d ${hoursLeft}h' : '–',
-                        style: TextStyle(fontSize: 12),
+                        daysLeft >= 0
+                            ? 'Expires in $daysLeft day(s) ${hoursLeft}h'
+                            : 'Expired ${-daysLeft} day(s) ago',
                       ),
-                      SizedBox(width: 12),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        children: cats.map((c) {
+                          final map = c as Map<String, dynamic>;
+                          return Chip(
+                            label: Text(map['name'] ?? ''),
+                            avatar: map['icon_url'] != null
+                                ? Image.network(map['icon_url'], width: 20, height: 20)
+                                : null,
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                  trailing: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Chip(
+                        label: Text(daysLeft >= 0 ? '$daysLeft d' : 'Exp'),
+                        backgroundColor: daysLeft <= 1 ? Colors.red[50] : Colors.green[50],
+                      ),
+                      const SizedBox(height: 8),
                       PopupMenuButton<String>(
                         onSelected: (val) async {
                           if (val == 'waste') {
-                            await widget.supa.logWaste(
-                              item['id'].toString(),
-                              1,
-                            );
+                            await widget.supa.logWaste(item['id'].toString(), 1);
                             await refresh();
                           } else if (val == 'donate') {
-                            // show a dialog to input recipient info, then:
-                            await widget.supa.offerDonation(
-                              item['id'].toString(),
-                              '',
-                            );
-                            await refresh();
+                            // open donation flow — pass item id
+                            Navigator.of(context).pushNamed('/donate', arguments: item['id'].toString()).then((_) => refresh());
                           } else if (val == 'delete') {
                             final ok = await showDialog<bool>(
                               context: context,
                               builder: (_) => AlertDialog(
-                                title: Text('Delete item?'),
-                                content: Text(
-                                  'Remove this product permanently?',
-                                ),
+                                title: const Text('Delete item?'),
+                                content: const Text('Remove this product permanently?'),
                                 actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, false),
-                                    child: Text('Cancel'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    child: Text('Delete'),
-                                  ),
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
                                 ],
                               ),
                             );
                             if (ok == true) {
-                              await widget.supa.deleteInventoryItem(
-                                item['id'].toString(),
-                              );
+                              await widget.supa.deleteInventoryItem(item['id'].toString());
                               await refresh();
                             }
                           }
                         },
                         itemBuilder: (_) => [
-                          PopupMenuItem(
-                            value: 'waste',
-                            child: Text('Log Waste'),
-                          ),
-                          PopupMenuItem(value: 'donate', child: Text('Donate')),
-                          PopupMenuItem(value: 'delete', child: Text('Delete')),
+                          const PopupMenuItem(value: 'waste', child: Text('Log Waste')),
+                          const PopupMenuItem(value: 'donate', child: Text('Donate')),
+                          const PopupMenuItem(value: 'delete', child: Text('Delete')),
                         ],
                       ),
                     ],
                   ),
-                  
                 ),
               );
-
             },
           );
         },

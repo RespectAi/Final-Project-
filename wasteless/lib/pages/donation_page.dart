@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
+import '../widgets/common.dart';
+
 
 class DonationPage extends StatefulWidget {
   static const route = '/donate';
@@ -13,10 +15,7 @@ class DonationPage extends StatefulWidget {
 }
 
 class _DonationPageState extends State<DonationPage> {
-  // form mode
   final _controller = TextEditingController();
-
-  // list mode
   late Future<List<Map<String, dynamic>>> _donations;
 
   @override
@@ -35,7 +34,6 @@ class _DonationPageState extends State<DonationPage> {
     final info = _controller.text.trim();
     if (info.isEmpty) return;
     await widget.supa.offerDonation(itemId, info);
-    // ensure list is updated when we pop back
     await _refreshDonations();
     Navigator.pop(context);
   }
@@ -46,79 +44,64 @@ class _DonationPageState extends State<DonationPage> {
     final itemId = args is String ? args : null;
 
     if (itemId != null) {
-      // FORM MODE: show donation input
       return Scaffold(
-        appBar: AppBar(title: Text('Offer Donation')),
+        appBar:gradientAppBar('Offer Donation'),
         body: Padding(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(
                 controller: _controller,
-                decoration: InputDecoration(labelText: 'Recipient Info'),
+                decoration: const InputDecoration(labelText: 'Recipient Info'),
               ),
-              Spacer(),
-              ElevatedButton(
-                onPressed: () => _submit(itemId),
-                child: Text('Donate'),
-              ),
+              const Spacer(),
+              SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => _submit(itemId), child: const Text('Donate'))),
             ],
           ),
         ),
       );
     } else {
-      // LIST MODE: show all donations
       return Scaffold(
-        appBar: AppBar(title: Text('All Donations')),
+        appBar:gradientAppBar('All Donations'),
         body: RefreshIndicator(
           onRefresh: _refreshDonations,
           child: FutureBuilder<List<Map<String, dynamic>>>(
             future: _donations,
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator());
+                return const Center(child: CircularProgressIndicator());
               }
               if (snap.hasError) {
                 return Center(child: Text('Error: ${snap.error}'));
               }
               final list = snap.data ?? [];
               if (list.isEmpty) {
-                return Center(child: Text('No donations yet.'));
+                return const Center(child: Text('No donations yet.'));
               }
               return ListView.builder(
-                padding: EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
                 itemCount: list.length,
                 itemBuilder: (_, i) {
                   final d = list[i];
                   final when = DateTime.parse(d['offered_at']);
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
                   final inv = d['inventory_items'] as Map<String, dynamic>?;
-                  final itemName = inv != null
-                      ? inv['name'] as String
-                      : 'Unknown Item';
+                  final itemName = inv != null ? inv['name'] as String : 'Unknown Item';
                   return Card(
-                    margin: EdgeInsets.symmetric(vertical: 4),
                     child: ListTile(
                       title: Text('$itemName → ${d['recipient_info']}'),
                       subtitle: Text(formatted),
                       trailing: IconButton(
-                        icon: Icon(Icons.delete, color: Colors.redAccent),
+                        icon: const Icon(Icons.delete, color: Colors.redAccent),
                         onPressed: () async {
                           final ok = await showDialog<bool>(
                             context: context,
                             builder: (_) => AlertDialog(
-                              title: Text('Delete donation?'),
-                              content: Text('Remove this donation permanently?'),
+                              title: const Text('Delete donation?'),
+                              content: const Text('Remove this donation permanently?'),
                               actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: Text('Delete'),
-                                ),
+                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
                               ],
                             ),
                           );
