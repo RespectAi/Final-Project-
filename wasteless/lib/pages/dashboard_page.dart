@@ -40,86 +40,124 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // No app bar here; parent provides a single header to avoid duplicates
+      appBar: buildGradientAppBar(
+        context,
+        'WasteLess',
+        showBackIfCanPop: false,
+        actions: [
+          IconButton(
+            tooltip: 'Scan QR',
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () {
+              showCornerToast(context, message: 'QR scanner coming soon');
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Left: vertical scroll of inventory-like cards + Other Reminders card
-                Expanded(
-                  flex: 2,
-                  child: ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      ...List.generate(items.length, (index) {
-                        final item = items[index];
-                        final isExpanded = expandedIndex == index;
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: Column(
-                            children: [
-                              ListTile(
-                                dense: true,
-                                title: Text(item['name']),
-                                subtitle: Text(item['category']),
-                                trailing: IconButton(
-                                  icon: Icon(isExpanded
-                                      ? Icons.keyboard_arrow_up
-                                      : Icons.keyboard_arrow_down),
-                                  onPressed: () => setState(() {
-                                    expandedIndex = isExpanded ? -1 : index;
-                                  }),
-                                ),
-                              ),
-                              if (isExpanded)
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('Entry: ${item['entry']}'),
-                                      Text('Expires: ${item['expiry']}'),
-                                    ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmall = constraints.maxWidth < 700;
+                // Keep a left-right split on all sizes. On small screens,
+                // the right side becomes a vertical stack of square cards.
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: ListView(
+                        padding: const EdgeInsets.all(12),
+                        children: [
+                          ...List.generate(items.length, (index) {
+                            final item = items[index];
+                            final isExpanded = expandedIndex == index;
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: Column(
+                                children: [
+                                  ListTile(
+                                    dense: true,
+                                    title: Text(item['name']),
+                                    subtitle: Text(item['category']),
+                                    trailing: IconButton(
+                                      icon: Icon(isExpanded
+                                          ? Icons.keyboard_arrow_up
+                                          : Icons.keyboard_arrow_down),
+                                      onPressed: () => setState(() {
+                                        expandedIndex = isExpanded ? -1 : index;
+                                      }),
+                                    ),
                                   ),
-                                ),
-                            ],
+                                  if (isExpanded)
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Entry: ${item['entry']}'),
+                                          Text('Expires: ${item['expiry']}'),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }),
+                          Card(
+                            color: Colors.teal[50],
+                            child: ListTile(
+                              title: const Text('Other Reminders'),
+                              subtitle: const Text('Non-expiry reminders and tasks'),
+                              trailing: const Icon(Icons.alarm),
+                              onTap: () => showCornerToast(
+                                context,
+                                message: 'Other Reminders — coming soon',
+                                alignment: Alignment.topLeft,
+                              ),
+                            ),
                           ),
-                        );
-                      }),
-                      Card(
-                        color: Colors.teal[50],
-                        child: ListTile(
-                          title: const Text('Other Reminders'),
-                          subtitle: const Text('Non-expiry reminders and tasks'),
-                          trailing: const Icon(Icons.alarm),
-                          onTap: () => showCornerToast(
-                            context,
-                            message: 'Other Reminders — coming soon',
-                            alignment: Alignment.topLeft,
-                          ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-
-                // Right: big feature tiles
-                Expanded(
-                  flex: 2,
-                  child: GridView.count(
-                    padding: const EdgeInsets.all(12),
-                    crossAxisCount: 2,
-                    childAspectRatio: 1.1,
-                    children: [
-                      _buildBigCard('Categories', Icons.category, onTap: () => showCornerToast(context, message: 'Categories — coming soon', alignment: Alignment.topLeft)),
-                      _buildBigCard('Fridges', Icons.kitchen, onTap: () => showCornerToast(context, message: 'Fridges — coming soon', alignment: Alignment.topLeft)),
-                      _buildBigCard('Users', Icons.people, onTap: () => showCornerToast(context, message: 'Users — coming soon', alignment: Alignment.topLeft)),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: isSmall
+                          ? ListView(
+                              padding: const EdgeInsets.all(12),
+                              children: [
+                                AspectRatio(
+                                  aspectRatio: 1,
+                                  child: _buildBigCard('Categories', Icons.category, onTap: () => showCornerToast(context, message: 'Categories — coming soon', alignment: Alignment.topLeft)),
+                                ),
+                                const SizedBox(height: 12),
+                                AspectRatio(
+                                  aspectRatio: 1,
+                                  child: _buildBigCard('Fridges', Icons.kitchen, onTap: () => showCornerToast(context, message: 'Fridges — coming soon', alignment: Alignment.topLeft)),
+                                ),
+                                const SizedBox(height: 12),
+                                AspectRatio(
+                                  aspectRatio: 1,
+                                  child: _buildBigCard('Users', Icons.people, onTap: () => showCornerToast(context, message: 'Users — coming soon', alignment: Alignment.topLeft)),
+                                ),
+                              ],
+                            )
+                          : GridView.count(
+                              padding: const EdgeInsets.all(12),
+                              crossAxisCount: 2,
+                              childAspectRatio: 1.1,
+                              children: [
+                                _buildBigCard('Categories', Icons.category, onTap: () => showCornerToast(context, message: 'Categories — coming soon', alignment: Alignment.topLeft)),
+                                _buildBigCard('Fridges', Icons.kitchen, onTap: () => showCornerToast(context, message: 'Fridges — coming soon', alignment: Alignment.topLeft)),
+                                _buildBigCard('Users', Icons.people, onTap: () => showCornerToast(context, message: 'Users — coming soon', alignment: Alignment.topLeft)),
+                              ],
+                            ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
 
@@ -167,7 +205,7 @@ class _DashboardPageState extends State<DashboardPage> {
           // Bottom announcements bar (placeholder content for now)
           SizedBox(
             height: 32,
-            child: _Marquee(messages: announcements),
+            child: ClipRect(child: _Marquee(messages: announcements)),
           ),
         ],
       ),

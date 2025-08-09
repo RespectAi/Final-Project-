@@ -149,6 +149,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Dashboard now has its own header; keep headers for other tabs only
       appBar: _currentIndex == 0
           ? null
           : buildGradientAppBar(

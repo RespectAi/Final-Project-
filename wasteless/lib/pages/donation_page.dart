@@ -81,8 +81,9 @@ class DonationPageState extends State<DonationPage> {
         ),
       );
     } else {
+      final showOwnAppBar = Navigator.of(context).canPop();
       return Scaffold(
-        appBar: buildGradientAppBar(context, 'All Donations', showBackIfCanPop: true),
+        appBar: showOwnAppBar ? buildGradientAppBar(context, 'All Donations', showBackIfCanPop: true) : null,
         body: RefreshIndicator(
           onRefresh: _refreshDonations,
           child: FutureBuilder<List<Map<String, dynamic>>>(

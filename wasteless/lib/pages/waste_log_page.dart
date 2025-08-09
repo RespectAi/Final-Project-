@@ -86,8 +86,9 @@ class WasteLogPageState extends State<WasteLogPage> {
         ),
       );
     } else {
+      final showOwnAppBar = Navigator.of(context).canPop();
       return Scaffold(
-        appBar: buildGradientAppBar(context, 'All Waste Logs', showBackIfCanPop: true),
+        appBar: showOwnAppBar ? buildGradientAppBar(context, 'All Waste Logs', showBackIfCanPop: true) : null,
         body: RefreshIndicator(
           onRefresh: _refreshLogs,
           child: FutureBuilder<List<Map<String, dynamic>>>(
