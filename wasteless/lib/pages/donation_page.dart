@@ -10,10 +10,10 @@ class DonationPage extends StatefulWidget {
   const DonationPage({required this.supa, Key? key}) : super(key: key);
 
   @override
-  _DonationPageState createState() => _DonationPageState();
+  DonationPageState createState() => DonationPageState();
 }
 
-class _DonationPageState extends State<DonationPage> {
+class DonationPageState extends State<DonationPage> {
   final _controller = TextEditingController();
   late Future<List<Map<String, dynamic>>> _donations;
 
@@ -42,12 +42,17 @@ class _DonationPageState extends State<DonationPage> {
     });
   }
 
+  // Allow parent to trigger refresh when tab becomes active
+  void refresh() => _refreshDonations();
+
   Future<void> _submit(String itemId) async {
     final info = _controller.text.trim();
     if (info.isEmpty) return;
     await widget.supa.offerDonation(itemId, info);
     await _refreshDonations();
-    Navigator.pop(context);
+    if (mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
   @override
@@ -77,7 +82,7 @@ class _DonationPageState extends State<DonationPage> {
       );
     } else {
       return Scaffold(
-        appBar: buildGradientAppBar(context, 'All Donations'),
+        appBar: buildGradientAppBar(context, 'All Donations', showBackIfCanPop: true),
         body: RefreshIndicator(
           onRefresh: _refreshDonations,
           child: FutureBuilder<List<Map<String, dynamic>>>(

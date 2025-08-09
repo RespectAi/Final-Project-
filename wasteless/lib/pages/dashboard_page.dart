@@ -40,20 +40,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildGradientAppBar(
-        context,
-        'WasteLess',
-        showBackIfCanPop: false,
-        actions: [
-          IconButton(
-            tooltip: 'Scan to add',
-            icon: const Icon(Icons.qr_code_scanner),
-            onPressed: () {
-              showCornerToast(context, message: 'QR scan coming soon');
-            },
-          ),
-        ],
-      ),
+      // No app bar here; parent provides a single header to avoid duplicates
       body: Column(
         children: [
           Expanded(

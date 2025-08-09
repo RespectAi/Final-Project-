@@ -11,10 +11,10 @@ class WasteLogPage extends StatefulWidget {
   const WasteLogPage({required this.supa, Key? key}) : super(key: key);
 
   @override
-  _WasteLogPageState createState() => _WasteLogPageState();
+  WasteLogPageState createState() => WasteLogPageState();
 }
 
-class _WasteLogPageState extends State<WasteLogPage> {
+class WasteLogPageState extends State<WasteLogPage> {
   String? itemId;
   String itemName = '';
   int _qty = 1;
@@ -39,7 +39,9 @@ class _WasteLogPageState extends State<WasteLogPage> {
 
   Future<void> _submit(String itemId) async {
     await widget.supa.logWaste(itemId, _qty, _reason);
-    Navigator.pop(context);
+    if (mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
   Future<void> _refreshLogs() async {
@@ -47,6 +49,9 @@ class _WasteLogPageState extends State<WasteLogPage> {
       _logs = widget.supa.fetchWasteLogs();
     });
   }
+
+  // Allow parent to trigger refresh when tab becomes active
+  void refresh() => _refreshLogs();
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +87,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
       );
     } else {
       return Scaffold(
-        appBar: buildGradientAppBar(context, 'All Waste Logs'),
+        appBar: buildGradientAppBar(context, 'All Waste Logs', showBackIfCanPop: true),
         body: RefreshIndicator(
           onRefresh: _refreshLogs,
           child: FutureBuilder<List<Map<String, dynamic>>>(

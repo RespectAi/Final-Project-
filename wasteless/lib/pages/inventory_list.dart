@@ -181,7 +181,7 @@ class InventoryListState extends State<InventoryList> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          PopupMenuButton<String>(
+                           PopupMenuButton<String>(
                             onSelected: (val) async {
                               if (val == 'waste') {
                                 // Navigate to waste page with id + name
@@ -190,7 +190,11 @@ class InventoryListState extends State<InventoryList> {
                                       WasteLogPage.route,
                                       arguments: {'id': item['id'].toString(), 'name': name},
                                     )
-                                    .then((_) => refresh());
+                                     .then((_) {
+                                       refresh();
+                                       // also ask waste tab to refresh if mounted
+                                       // Parent HomePage will refresh tab on selection
+                                     });
                               } else if (val == 'donate') {
                                 // Navigate to donate page with id + name
                                 Navigator.of(context)
@@ -198,7 +202,9 @@ class InventoryListState extends State<InventoryList> {
                                       DonationPage.route,
                                       arguments: {'id': item['id'].toString(), 'name': name},
                                     )
-                                    .then((_) => refresh());
+                                     .then((_) {
+                                       refresh();
+                                     });
                               } else if (val == 'delete') {
                                 final ok = await showDialog<bool>(
                                   context: context,

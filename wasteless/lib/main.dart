@@ -110,6 +110,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0; // 0: Dashboard, 1: Inventory, 2: Waste, 3: Donate
   final GlobalKey<InventoryListState> _invKey = GlobalKey();
+  final GlobalKey<WasteLogPageState> _wasteKey = GlobalKey();
+  final GlobalKey<DonationPageState> _donKey = GlobalKey();
 
   late final List<Widget> _pages = [
     DashboardPage(
@@ -117,11 +119,11 @@ class _HomePageState extends State<HomePage> {
       onNavigateToTab: (idx) => setState(() => _currentIndex = idx),
     ), // 0
     InventoryList(key: _invKey, supa: widget.supa), // 1
-    WasteLogPage(supa: widget.supa),                 // 2
-    DonationPage(supa: widget.supa),                 // 3
+    WasteLogPage(key: _wasteKey, supa: widget.supa), // 2
+    DonationPage(key: _donKey, supa: widget.supa),   // 3
   ];
 
-  static const _titles = ['Dashboard', 'Inventory', 'Waste', 'Donate'];
+  static const _titles = ['WasteLess', 'Inventory', 'All Waste Logs', 'All Donations'];
 
   @override
   void initState() {
@@ -147,11 +149,13 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildGradientAppBar(
-        context,
-        _titles[_currentIndex] == 'Dashboard' ? 'WasteLess' : _titles[_currentIndex],
-        showBackIfCanPop: false,
-      ),
+      appBar: _currentIndex == 0
+          ? null
+          : buildGradientAppBar(
+              context,
+              _titles[_currentIndex],
+              showBackIfCanPop: false,
+            ),
       body: IndexedStack(index: _currentIndex, children: _pages),
       floatingActionButton: _currentIndex == 1
           ? FloatingActionButton(
@@ -167,7 +171,12 @@ class _HomePageState extends State<HomePage> {
           ? const SizedBox.shrink()
           : NavigationBar(
               selectedIndex: _currentIndex,
-              onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+              onDestinationSelected: (idx) {
+                setState(() => _currentIndex = idx);
+                if (idx == 1) _invKey.currentState?.refresh();
+                if (idx == 2) _wasteKey.currentState?.refresh();
+                if (idx == 3) _donKey.currentState?.refresh();
+              },
               destinations: const [
                 NavigationDestination(icon: Icon(Icons.dashboard), label: 'Home'),
                 NavigationDestination(icon: Icon(Icons.kitchen), label: 'Inventory'),
