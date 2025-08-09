@@ -1,8 +1,6 @@
 // lib/pages/inventory_list.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
-import '../widgets/common.dart';
 
 
 class InventoryList extends StatefulWidget {
@@ -69,12 +67,13 @@ class InventoryListState extends State<InventoryList> {
               final hoursLeft = diff.inHours % 24;
 
               final quantity = item['quantity'] ?? 1;
-              final firstCat = cats.isNotEmpty ? cats.first as Map<String, dynamic> : null;
+              final firstCat = cats.isNotEmpty ? cats.first : null;
               final catIcon = firstCat != null ? (firstCat['icon_url'] as String?) : null;
               final name = item['name'] as String? ?? 'Unnamed';
 
               return Card(
                 child: ListTile(
+                  isThreeLine: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   leading: Stack(
                     alignment: Alignment.topRight,
@@ -116,11 +115,10 @@ class InventoryListState extends State<InventoryList> {
                       Wrap(
                         spacing: 8,
                         children: cats.map((c) {
-                          final map = c as Map<String, dynamic>;
                           return Chip(
-                            label: Text(map['name'] ?? ''),
-                            avatar: map['icon_url'] != null
-                                ? Image.network(map['icon_url'], width: 20, height: 20)
+                            label: Text(c['name'] ?? ''),
+                            avatar: c['icon_url'] != null
+                                ? Image.network(c['icon_url'], width: 20, height: 20)
                                 : null,
                             visualDensity: VisualDensity.compact,
                           );

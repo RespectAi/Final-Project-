@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
 import '../widgets/common.dart';
 
-
 class WasteLogPage extends StatefulWidget {
   static const route = '/waste';
   final SupabaseService supa;
@@ -31,10 +30,10 @@ class _WasteLogPageState extends State<WasteLogPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (args != null) {
-      itemId = args['id'];
-      itemName = args['name'] ?? '';
+      itemId = args['id']?.toString();
+      itemName = (args['name'] as String?) ?? '';
     }
   }
 
@@ -53,7 +52,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
   Widget build(BuildContext context) {
     if (itemId != null && itemId!.isNotEmpty) {
       return Scaffold(
-        appBar:gradientAppBar('Log Waste: $itemName'),
+        appBar: gradientAppBar('Log Waste: ${itemName.isEmpty ? "Item" : itemName}'),
         body: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -83,7 +82,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
       );
     } else {
       return Scaffold(
-        appBar:gradientAppBar('All Waste Logs'),
+        appBar: gradientAppBar('All Waste Logs'),
         body: RefreshIndicator(
           onRefresh: _refreshLogs,
           child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -107,7 +106,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
                   final when = DateTime.parse(log['logged_at']);
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
                   final inv = log['inventory_items'] as Map<String, dynamic>?;
-                  final invName = inv != null ? inv['name'] as String : 'Unknown Item';
+                  final invName = (log['item_name'] as String?) ?? (inv?['name'] as String?) ?? 'Unknown Item';
                   return Dismissible(
                     key: Key(log['id'].toString()),
                     direction: DismissDirection.endToStart,

@@ -12,8 +12,9 @@ import 'pages/auth_page.dart';
 import 'pages/donation_page.dart';
 import 'pages/inventory_list.dart';
 import 'pages/waste_log_page.dart';
+import 'pages/dashboard_page.dart';
 import 'services/supabase_service.dart';
-import 'widgets/common.dart'; //
+import 'widgets/common.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,33 +58,14 @@ class WasteLessApp extends StatelessWidget {
     required this.supa,
   }) : super(key: key);
 
-  // Reusable gradient AppBar used throughout the app
-  static PreferredSizeWidget gradientAppBar(String title) {
-    return AppBar(
-      title: Text(title),
-      elevation: 0,
-      centerTitle: true,
-      backgroundColor: Colors.transparent,
-      flexibleSpace: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF2E7D32), Color(0xFF0277BD)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
-      ),
-    );
-  }
+  // AppBar helper is centralized in widgets/common.dart as gradientAppBar
 
   @override
   Widget build(BuildContext context) {
-    final seed = const Color(0xFF2E7D32); // vegetable green
+    final seed = const Color(0xFF2E7D32);
     return MaterialApp(
       title: 'WasteLess',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
@@ -95,7 +77,7 @@ class WasteLessApp extends StatelessWidget {
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        cardTheme: CardThemeData( // <-- FIXED: use CardTheme not CardThemeData
+        cardTheme: CardThemeData(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           elevation: 2,
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -126,18 +108,24 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _currentIndex = 0;
-  final List<Widget> _pages = [];
+  int _currentIndex = 0; // 0: Dashboard, 1: Inventory, 2: Waste, 3: Donate
   final GlobalKey<InventoryListState> _invKey = GlobalKey();
+
+  late final List<Widget> _pages = [
+    DashboardPage(
+      supa: widget.supa,
+      onNavigateToTab: (idx) => setState(() => _currentIndex = idx),
+    ), // 0
+    InventoryList(key: _invKey, supa: widget.supa), // 1
+    WasteLogPage(supa: widget.supa),                 // 2
+    DonationPage(supa: widget.supa),                 // 3
+  ];
+
+  static const _titles = ['Dashboard', 'Inventory', 'Waste', 'Donate'];
 
   @override
   void initState() {
     super.initState();
-    _pages.addAll([
-      InventoryList(key: _invKey, supa: widget.supa),
-      WasteLogPage(supa: widget.supa),
-      DonationPage(supa: widget.supa),
-    ]);
     _rescheduleAll();
   }
 
@@ -150,21 +138,18 @@ class _HomePageState extends State<HomePage> {
         final hours = (item['reminder_hours_before'] as int?) ?? 0;
         final notifyTime = expiry.subtract(Duration(days: days, hours: hours));
         if (notifyTime.isAfter(DateTime.now())) {
-          // If you want to re-schedule notifications on app start, call a method in SupabaseService.
           // widget.supa.scheduleNotificationForItem(...);
         }
-      } catch (_) {
-        // ignore parse errors
-      }
+      } catch (_) {}
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar:gradientAppBar('WasteLess Dashboard'),
-      body: _pages[_currentIndex],
-      floatingActionButton: _currentIndex == 0
+      appBar: gradientAppBar(_titles[_currentIndex]),
+      body: IndexedStack(index: _currentIndex, children: _pages),
+      floatingActionButton: _currentIndex == 1
           ? FloatingActionButton(
               child: const Icon(Icons.add),
               onPressed: () {
@@ -178,6 +163,7 @@ class _HomePageState extends State<HomePage> {
         currentIndex: _currentIndex,
         onTap: (idx) => setState(() => _currentIndex = idx),
         items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.kitchen), label: 'Inventory'),
           BottomNavigationBarItem(icon: Icon(Icons.delete), label: 'Waste'),
           BottomNavigationBarItem(icon: Icon(Icons.card_giftcard), label: 'Donate'),

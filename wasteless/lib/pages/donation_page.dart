@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
 import '../widgets/common.dart';
 
-
 class DonationPage extends StatefulWidget {
   static const route = '/donate';
   final SupabaseService supa;
@@ -18,10 +17,23 @@ class _DonationPageState extends State<DonationPage> {
   final _controller = TextEditingController();
   late Future<List<Map<String, dynamic>>> _donations;
 
+  String? _itemId;
+  String _itemName = '';
+
   @override
   void initState() {
     super.initState();
     _refreshDonations();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (args != null) {
+      _itemId = args['id']?.toString();
+      _itemName = (args['name'] as String?) ?? '';
+    }
   }
 
   Future<void> _refreshDonations() async {
@@ -40,29 +52,32 @@ class _DonationPageState extends State<DonationPage> {
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)!.settings.arguments;
-    final itemId = args is String ? args : null;
-
-    if (itemId != null) {
+    if (_itemId != null) {
       return Scaffold(
-        appBar:gradientAppBar('Offer Donation'),
+        appBar: gradientAppBar('Offer Donation: ${_itemName.isEmpty ? "Item" : _itemName}'),
         body: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('Item: ${_itemName.isEmpty ? _itemId : _itemName}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
               TextField(
                 controller: _controller,
                 decoration: const InputDecoration(labelText: 'Recipient Info'),
               ),
               const Spacer(),
-              SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => _submit(itemId), child: const Text('Donate'))),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(onPressed: () => _submit(_itemId!), child: const Text('Donate')),
+              ),
             ],
           ),
         ),
       );
     } else {
       return Scaffold(
-        appBar:gradientAppBar('All Donations'),
+        appBar: gradientAppBar('All Donations'),
         body: RefreshIndicator(
           onRefresh: _refreshDonations,
           child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -86,7 +101,7 @@ class _DonationPageState extends State<DonationPage> {
                   final when = DateTime.parse(d['offered_at']);
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
                   final inv = d['inventory_items'] as Map<String, dynamic>?;
-                  final itemName = inv != null ? inv['name'] as String : 'Unknown Item';
+                  final itemName = (d['item_name'] as String?) ?? (inv?['name'] as String?) ?? 'Unknown Item';
                   return Card(
                     child: ListTile(
                       title: Text('$itemName → ${d['recipient_info']}'),
