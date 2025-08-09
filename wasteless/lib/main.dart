@@ -147,7 +147,11 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: gradientAppBar(_titles[_currentIndex]),
+      appBar: buildGradientAppBar(
+        context,
+        _titles[_currentIndex] == 'Dashboard' ? 'WasteLess' : _titles[_currentIndex],
+        showBackIfCanPop: false,
+      ),
       body: IndexedStack(index: _currentIndex, children: _pages),
       floatingActionButton: _currentIndex == 1
           ? FloatingActionButton(

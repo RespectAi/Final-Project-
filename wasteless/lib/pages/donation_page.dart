@@ -54,7 +54,7 @@ class _DonationPageState extends State<DonationPage> {
   Widget build(BuildContext context) {
     if (_itemId != null) {
       return Scaffold(
-        appBar: gradientAppBar('Offer Donation: ${_itemName.isEmpty ? "Item" : _itemName}'),
+        appBar: buildGradientAppBar(context, 'Offer Donation: ${_itemName.isEmpty ? "Item" : _itemName}'),
         body: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -77,7 +77,7 @@ class _DonationPageState extends State<DonationPage> {
       );
     } else {
       return Scaffold(
-        appBar: gradientAppBar('All Donations'),
+        appBar: buildGradientAppBar(context, 'All Donations'),
         body: RefreshIndicator(
           onRefresh: _refreshDonations,
           child: FutureBuilder<List<Map<String, dynamic>>>(

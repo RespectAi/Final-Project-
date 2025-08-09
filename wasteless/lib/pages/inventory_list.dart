@@ -69,7 +69,7 @@ class InventoryListState extends State<InventoryList> {
               final hoursLeft = diff.inHours % 24;
 
               final quantity = item['quantity'] ?? 1;
-              final firstCat = cats.isNotEmpty ? cats.first as Map<String, dynamic> : null;
+              final firstCat = cats.isNotEmpty ? cats.first : null;
               final catIcon = firstCat != null ? (firstCat['icon_url'] as String?) : null;
               final name = (item['name'] as String?)?.trim().isNotEmpty == true
                   ? (item['name'] as String)
@@ -134,9 +134,8 @@ class InventoryListState extends State<InventoryList> {
                                 runSpacing: 4,
                                 clipBehavior: Clip.hardEdge,
                                 children: cats.map((c) {
-                                  final map = c as Map<String, dynamic>;
-                                  final iconUrl = (map['icon_url'] as String?) ?? '';
-                                  final label = (map['name'] as String?) ?? '';
+                                  final iconUrl = (c['icon_url'] as String?) ?? '';
+                                  final label = (c['name'] as String?) ?? '';
                                   return Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
@@ -165,8 +164,8 @@ class InventoryListState extends State<InventoryList> {
 
                       const SizedBox(width: 8),
 
-                      // TRAILING: [status badge] [menu] — horizontal
-                      Row(
+                       // TRAILING: [status badge] to the LEFT of dropdown menu
+                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
@@ -218,7 +217,7 @@ class InventoryListState extends State<InventoryList> {
                                 }
                               }
                             },
-                            itemBuilder: (_) => const [
+                             itemBuilder: (_) => const [
                               PopupMenuItem(value: 'waste', child: Text('Log Waste')),
                               PopupMenuItem(value: 'donate', child: Text('Donate')),
                               PopupMenuItem(value: 'delete', child: Text('Delete')),

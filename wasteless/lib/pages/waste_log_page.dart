@@ -52,7 +52,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
   Widget build(BuildContext context) {
     if (itemId != null && itemId!.isNotEmpty) {
       return Scaffold(
-        appBar: gradientAppBar('Log Waste: ${itemName.isEmpty ? "Item" : itemName}'),
+        appBar: buildGradientAppBar(context, 'Log Waste: ${itemName.isEmpty ? "Item" : itemName}'),
         body: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -82,7 +82,7 @@ class _WasteLogPageState extends State<WasteLogPage> {
       );
     } else {
       return Scaffold(
-        appBar: gradientAppBar('All Waste Logs'),
+        appBar: buildGradientAppBar(context, 'All Waste Logs'),
         body: RefreshIndicator(
           onRefresh: _refreshLogs,
           child: FutureBuilder<List<Map<String, dynamic>>>(

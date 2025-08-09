@@ -54,39 +54,53 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: gradientAppBar(_isLogin ? 'Login' : 'Sign Up'),
+      appBar: buildGradientAppBar(context, _isLogin ? 'WasteLess — Login' : 'WasteLess — Sign Up'),
       body: Center(
-        child: Card(
-          margin: const EdgeInsets.symmetric(horizontal: 20),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: SizedBox(
-              width: 460,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Card(
+            elevation: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+                  Text(
+                    _isLogin ? 'Welcome back' : 'Create your account',
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                    ),
                   TextField(
                     controller: _emailController,
-                    decoration: const InputDecoration(labelText: 'Email'),
+                    decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _passController,
-                    decoration: const InputDecoration(labelText: 'Password'),
+                    decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
                     obscureText: true,
                   ),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.login),
                       onPressed: _loading ? null : _submit,
-                      child: _loading ? const CircularProgressIndicator.adaptive() : Text(_isLogin ? 'Login' : 'Sign Up'),
+                      label: _loading
+                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator.adaptive(strokeWidth: 2))
+                          : Text(_isLogin ? 'Login' : 'Sign Up'),
                     ),
                   ),
                   TextButton(
                     onPressed: () => setState(() => _isLogin = !_isLogin),
-                    child: Text(_isLogin ? 'Need an account? Sign Up' : 'Have account? Login'),
+                    child: Text(_isLogin ? 'Need an account? Sign Up' : 'Have an account? Login'),
                   ),
                 ],
               ),
