@@ -52,20 +52,6 @@ class _DashboardPageState extends State<DashboardPage> {
               showCornerToast(context, message: 'QR scan coming soon');
             },
           ),
-          PopupMenuButton<String>(
-            onSelected: (val) {
-              showCornerToast(
-                context,
-                message: '$val — coming soon',
-                alignment: Alignment.topRight,
-              );
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'Categories', child: Text('Categories')),
-              PopupMenuItem(value: 'Fridges', child: Text('Fridges')),
-              PopupMenuItem(value: 'Users', child: Text('Users')),
-            ],
-          ),
         ],
       ),
       body: Column(
@@ -134,16 +120,15 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 // Right: big feature tiles
                 Expanded(
-                  flex: 3,
+                  flex: 2,
                   child: GridView.count(
                     padding: const EdgeInsets.all(12),
                     crossAxisCount: 2,
-                    childAspectRatio: 1.2,
+                    childAspectRatio: 1.1,
                     children: [
-                      _buildBigCard('Categories', Icons.category),
-                      _buildBigCard('Fridges', Icons.kitchen),
-                      _buildBigCard('Users', Icons.people),
-                      _buildBigCard('Other Reminders', Icons.alarm),
+                      _buildBigCard('Categories', Icons.category, onTap: () => showCornerToast(context, message: 'Categories — coming soon', alignment: Alignment.topLeft)),
+                      _buildBigCard('Fridges', Icons.kitchen, onTap: () => showCornerToast(context, message: 'Fridges — coming soon', alignment: Alignment.topLeft)),
+                      _buildBigCard('Users', Icons.people, onTap: () => showCornerToast(context, message: 'Users — coming soon', alignment: Alignment.topLeft)),
                     ],
                   ),
                 ),
@@ -193,45 +178,80 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
 
           // Bottom announcements bar (placeholder content for now)
-          Container(
-            color: Colors.green[800],
+          SizedBox(
             height: 32,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: announcements
-                  .map((msg) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        child: Center(
-                          child: Text(
-                            msg,
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ))
-                  .toList(),
-            ),
+            child: _Marquee(messages: announcements),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBigCard(String title, IconData icon) {
+  Widget _buildBigCard(String title, IconData icon, {VoidCallback? onTap}) {
     return Card(
       elevation: 3,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 36),
-            const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontSize: 16)),
-          ],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 32),
+              const SizedBox(height: 6),
+              Text(title, style: const TextStyle(fontSize: 15)),
+            ],
+          ),
         ),
       ),
     );
   }
 
   // _buildSmallCard removed (no longer used)
+}
+
+class _Marquee extends StatefulWidget {
+  final List<String> messages;
+  const _Marquee({required this.messages});
+
+  @override
+  State<_Marquee> createState() => _MarqueeState();
+}
+
+class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
+    _anim = Tween<double>(begin: 1, end: -1).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.messages.join('     •     ');
+    return Container(
+      color: Colors.green[800],
+      child: AnimatedBuilder(
+        animation: _anim,
+        builder: (_, __) {
+          return FractionalTranslation(
+            translation: Offset(_anim.value, 0),
+            child: Row(children: [
+              const SizedBox(width: 16),
+              Text(text, style: const TextStyle(color: Colors.white)),
+            ]),
+          );
+        },
+      ),
+    );
+  }
 }

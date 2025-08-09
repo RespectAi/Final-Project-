@@ -9,13 +9,14 @@ PreferredSizeWidget buildGradientAppBar(
   String title, {
   List<Widget>? actions,
   bool showBackIfCanPop = true,
+  bool forceBack = false,
 }) {
   return AppBar(
     title: Text(title),
     elevation: 0,
     centerTitle: true,
     backgroundColor: Colors.transparent,
-    leading: showBackIfCanPop && Navigator.of(context).canPop()
+    leading: (forceBack || (showBackIfCanPop && Navigator.of(context).canPop()))
         ? const BackButton()
         : null,
     actions: actions,

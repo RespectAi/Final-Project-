@@ -163,16 +163,18 @@ class _HomePageState extends State<HomePage> {
               },
             )
           : null,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (idx) => setState(() => _currentIndex = idx),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.kitchen), label: 'Inventory'),
-          BottomNavigationBarItem(icon: Icon(Icons.delete), label: 'Waste'),
-          BottomNavigationBarItem(icon: Icon(Icons.card_giftcard), label: 'Donate'),
-        ],
-      ),
+      bottomNavigationBar: _currentIndex == 0
+          ? const SizedBox.shrink()
+          : NavigationBar(
+              selectedIndex: _currentIndex,
+              onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.dashboard), label: 'Home'),
+                NavigationDestination(icon: Icon(Icons.kitchen), label: 'Inventory'),
+                NavigationDestination(icon: Icon(Icons.delete), label: 'Waste'),
+                NavigationDestination(icon: Icon(Icons.card_giftcard), label: 'Donate'),
+              ],
+            ),
     );
   }
 }
