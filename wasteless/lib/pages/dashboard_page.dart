@@ -1,157 +1,188 @@
 // lib/pages/dashboard_page.dart
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
-import '../widgets/common.dart';
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   final SupabaseService supa;
-  final void Function(int tabIndex) onNavigateToTab;
+  const DashboardPage({super.key, required this.supa});
 
-  const DashboardPage({
-    Key? key,
-    required this.supa,
-    required this.onNavigateToTab,
-  }) : super(key: key);
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
 
-  void _comingSoon(BuildContext context, String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label — coming soon')),
-    );
-  }
+class _DashboardPageState extends State<DashboardPage> {
+  // Example placeholder data
+  final List<Map<String, dynamic>> items = [
+    {
+      "name": "Milk",
+      "category": "Dairy",
+      "entry": "2025-08-07 10:00",
+      "expiry": "2025-08-10 10:00"
+    },
+    {
+      "name": "Apples",
+      "category": "Fruit",
+      "entry": "2025-08-06 14:00",
+      "expiry": "2025-08-15 14:00"
+    },
+  ];
+
+  final List<String> announcements = [
+    "Upcoming Feature: AI-based expiry prediction",
+    "Tip: Donate unused food before it spoils",
+    "New: Scan QR codes to add items faster"
+  ];
+
+  int expandedIndex = -1; // For inline expansion
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: gradientAppBar('WasteLess'),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      children: [
+        // QR Button Row
+        Align(
+          alignment: Alignment.topRight,
+          child: IconButton(
+            icon: const Icon(Icons.qr_code_scanner, size: 28),
+            onPressed: () {
+              // TODO: integrate QR scanner plugin
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("QR scan coming soon")),
+              );
+            },
+          ),
+        ),
+
+        // Main dashboard layout
+        Expanded(
+          child: Row(
             children: [
+              // Left column - Item cards
               Expanded(
+                flex: 2,
+                child: ListView.builder(
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final isExpanded = expandedIndex == index;
+                    return Card(
+                      child: Column(
+                        children: [
+                          ListTile(
+                            title: Text(item['name']),
+                            subtitle: Text(item['category']),
+                            trailing: IconButton(
+                              icon: Icon(
+                                isExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  expandedIndex =
+                                      isExpanded ? -1 : index;
+                                });
+                              },
+                            ),
+                          ),
+                          if (isExpanded)
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                children: [
+                                  Text("Time of entry: ${item['entry']}"),
+                                  Text("Time to expire: ${item['expiry']}"),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              // Right column - big cards
+              Expanded(
+                flex: 3,
                 child: GridView.count(
                   crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.3,
+                  childAspectRatio: 1.2,
+                  shrinkWrap: true,
                   children: [
-                    _Tile(
-                      label: 'Categories',
-                      icon: Icons.category,
-                      onTap: () => _comingSoon(context, 'Categories'),
-                    ),
-                    _Tile(
-                      label: 'Fridges',
-                      icon: Icons.kitchen,
-                      onTap: () => _comingSoon(context, 'Fridges'),
-                    ),
-                    _Tile(
-                      label: 'Other Reminders',
-                      icon: Icons.alarm,
-                      onTap: () => _comingSoon(context, 'Other Reminders'),
-                    ),
-                    _Tile(
-                      label: 'Users',
-                      icon: Icons.group,
-                      onTap: () => _comingSoon(context, 'Users'),
-                    ),
+                    _buildBigCard("Categories", Icons.category),
+                    _buildBigCard("Fridges", Icons.kitchen),
+                    _buildBigCard("Users", Icons.people),
+                    _buildBigCard("Other Reminders", Icons.alarm),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _QuickButton(
-                      label: 'Inventory',
-                      icon: Icons.inventory,
-                      onPressed: () => onNavigateToTab(1),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _QuickButton(
-                      label: 'Waste log',
-                      icon: Icons.delete,
-                      onPressed: () => onNavigateToTab(2),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _QuickButton(
-                      label: 'Donate',
-                      icon: Icons.card_giftcard,
-                      onPressed: () => onNavigateToTab(3),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
-      ),
+
+        // Bottom row of three cards
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildSmallCard("Inventory", Icons.list),
+            _buildSmallCard("Waste", Icons.delete),
+            _buildSmallCard("Donate", Icons.card_giftcard),
+          ],
+        ),
+
+        // Scrolling announcement bar
+        Container(
+          color: Colors.green[800],
+          height: 30,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: announcements
+                .map((msg) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Center(
+                        child: Text(
+                          msg,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ))
+                .toList(),
+          ),
+        ),
+      ],
     );
   }
-}
 
-class _Tile extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _Tile({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildBigCard(String title, IconData icon) {
     return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 32, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-              ),
-            ],
-          ),
+      elevation: 3,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 36),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(fontSize: 16)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmallCard(String title, IconData icon) {
+    return Card(
+      color: Colors.teal[100],
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
+          children: [
+            Icon(icon),
+            const SizedBox(width: 6),
+            Text(title),
+          ],
         ),
       ),
     );
   }
 }
-
-class _QuickButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  const _QuickButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      icon: Icon(icon),
-      onPressed: onPressed,
-      label: Text(label),
-      style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-    );
-  }
-}
-
-
