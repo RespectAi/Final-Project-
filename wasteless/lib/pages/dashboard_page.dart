@@ -1,7 +1,7 @@
 // lib/pages/dashboard_page.dart
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
-// import 'package:intl/intl.dart';
+import 'package:intl/intl.dart';
 import '../widgets/common.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -70,7 +70,7 @@ class DashboardPageState extends State<DashboardPage> {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(flex: 2, child: _buildLeftPane()),
+                    Expanded(flex: 2, child: _buildLeftPane(isSmall)),
                     Expanded(
                       flex: 2,
                       child: isSmall
@@ -183,7 +183,7 @@ class DashboardPageState extends State<DashboardPage> {
 
   // _buildSmallCard removed (no longer used)
 
-  Widget _buildLeftPane() {
+  Widget _buildLeftPane(bool isSmall) {
     return RefreshIndicator(
       onRefresh: _refreshInventory,
       child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -196,6 +196,7 @@ class DashboardPageState extends State<DashboardPage> {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
           final items = snapshot.data ?? const [];
+          final dateFmt = DateFormat('EEEE, dd-MM-yyyy, h:mm a');
           // Make the list scrollable while keeping Other Reminders visible at bottom
           return Padding(
             padding: const EdgeInsets.all(12),
@@ -261,41 +262,59 @@ class DashboardPageState extends State<DashboardPage> {
                             if (isExpanded)
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Entry: ${createdAt.toLocal()}'),
-                                    const SizedBox(height: 6),
-                                    const Text('Categories:'),
-                                    const SizedBox(height: 6),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 4,
-                                      children: cats.map((c) {
-                                        final iconUrl = (c['icon_url'] as String?) ?? '';
-                                        final label = (c['name'] as String?) ?? '';
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey[100],
-                                            borderRadius: BorderRadius.circular(16),
-                                            border: Border.all(color: Colors.black12),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[50],
+                                    border: Border.all(color: Colors.black12),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(children: [
+                                        const Icon(Icons.calendar_today, size: 16),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            'Entry: ${dateFmt.format(createdAt.toLocal())}',
+                                            softWrap: true,
                                           ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              if (iconUrl.isNotEmpty)
-                                                Padding(
-                                                  padding: const EdgeInsets.only(right: 4),
-                                                  child: Image.network(iconUrl, width: 16, height: 16),
-                                                ),
-                                              Text(label, style: const TextStyle(fontSize: 12)),
-                                            ],
+                                        ),
+                                      ]),
+                                      const SizedBox(height: 8),
+                                      Row(children: [
+                                        const Icon(Icons.event, size: 16),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            'Expiry: ${dateFmt.format(expiry.toLocal())}',
+                                            softWrap: true,
                                           ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ],
+                                        ),
+                                      ]),
+                                      const SizedBox(height: 10),
+                                      const Text('Categories', style: TextStyle(fontWeight: FontWeight.w600)),
+                                      const SizedBox(height: 6),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 6,
+                                        children: cats.map((c) {
+                                          final iconUrl = (c['icon_url'] as String?) ?? '';
+                                          final label = (c['name'] as String?) ?? '';
+                                          return Chip(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                                            avatar: iconUrl.isNotEmpty
+                                                ? Image.network(iconUrl, width: 16, height: 16)
+                                                : const Icon(Icons.eco, size: 16),
+                                            label: Text(label),
+                                          );
+                                        }).toList(),
+                                      ),
+                                      if (cats.isEmpty)
+                                        const Text('No category', style: TextStyle(color: Colors.black54)),
+                                    ],
+                                  ),
                                 ),
                               ),
                           ],
@@ -305,12 +324,22 @@ class DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 SizedBox(
-                  height: 100,
+                  height: isSmall ? 120 : 160,
                   child: Card(
                     color: Colors.teal[50],
                     child: ListTile(
-                      title: const Text('Other Reminders'),
-                      subtitle: const Text('Non-expiry reminders and tasks'),
+                      title: const Text(
+                        'Other Reminders',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: const Text(
+                        'Non-expiry reminders and tasks',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
                       trailing: const Icon(Icons.alarm),
                       onTap: () => showCornerToast(
                         context,

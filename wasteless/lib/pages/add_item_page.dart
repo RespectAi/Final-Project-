@@ -123,7 +123,7 @@ class _AddItemPageState extends State<AddItemPage> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Category', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Text('Category (required)', style: TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
