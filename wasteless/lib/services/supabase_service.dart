@@ -35,7 +35,7 @@ class SupabaseService {
 
   /// Fetch the full list of (pre‐seeded) categories
   Future<List<Map<String, dynamic>>> fetchCategories() async {
-    final data = await client.from('categories').select('id, name, icon_url').order('name');
+    final data = await client.from('categories').select('id, name, icon_url, default_expiry_days').order('name');
     return List<Map<String, dynamic>>.from(data);
   }
 

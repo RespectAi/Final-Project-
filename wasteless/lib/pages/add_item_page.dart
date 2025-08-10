@@ -132,6 +132,7 @@ class _AddItemPageState extends State<AddItemPage> {
                           final name = c['name'] as String;
                           final url = c['icon_url'] as String?;
                           final selected = _selectedCatIds.contains(id);
+                          final int? defaultDays = c['default_expiry_days'] as int?;
                           return ChoiceChip(
                             label: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -144,10 +145,14 @@ class _AddItemPageState extends State<AddItemPage> {
                             selected: selected,
                             onSelected: (sel) {
                               setState(() {
-                                if (sel)
+                                if (sel) {
                                   _selectedCatIds.add(id);
-                                else
+                                  if (defaultDays != null && defaultDays > 0) {
+                                    _expiry = DateTime.now().add(Duration(days: defaultDays));
+                                  }
+                                } else {
                                   _selectedCatIds.remove(id);
+                                }
                               });
                             },
                           );

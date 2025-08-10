@@ -16,6 +16,8 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   final _emailController = TextEditingController();
   final _passController = TextEditingController();
+  final FocusNode _emailFocus = FocusNode();
+  final FocusNode _passFocus = FocusNode();
   bool _isLogin = true;
   String? _error;
   bool _loading = false;
@@ -29,6 +31,15 @@ class _AuthGateState extends State<AuthGate> {
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passController.dispose();
+    _emailFocus.dispose();
+    _passFocus.dispose();
+    super.dispose();
   }
 
   Future<void> _submit() async {
@@ -79,11 +90,17 @@ class _AuthGateState extends State<AuthGate> {
                     ),
                   TextField(
                     controller: _emailController,
+                    focusNode: _emailFocus,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => _passFocus.requestFocus(),
                     decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _passController,
+                    focusNode: _passFocus,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _loading ? null : _submit(),
                     decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
                     obscureText: true,
                   ),
