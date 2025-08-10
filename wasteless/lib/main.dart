@@ -112,9 +112,11 @@ class _HomePageState extends State<HomePage> {
   final GlobalKey<InventoryListState> _invKey = GlobalKey();
   final GlobalKey<WasteLogPageState> _wasteKey = GlobalKey();
   final GlobalKey<DonationPageState> _donKey = GlobalKey();
+  final GlobalKey<DashboardPageState> _dashKey = GlobalKey();
 
   late final List<Widget> _pages = [
     DashboardPage(
+      key: _dashKey,
       supa: widget.supa,
       onNavigateToTab: (idx) => setState(() => _currentIndex = idx),
     ), // 0
@@ -164,6 +166,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: () {
                 Navigator.pushNamed(context, AddItemPage.route).then((_) {
                   _invKey.currentState?.refresh();
+                  _dashKey.currentState?.refresh();
                 });
               },
             )

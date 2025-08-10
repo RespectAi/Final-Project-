@@ -31,6 +31,12 @@ class _AddItemPageState extends State<AddItemPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedCatIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one category')),
+      );
+      return;
+    }
     _formKey.currentState!.save();
 
     try {
@@ -44,7 +50,7 @@ class _AddItemPageState extends State<AddItemPage> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     } catch (err, stack) {
       debugPrint('Error in addItem: $err\n$stack');
       if (mounted) {

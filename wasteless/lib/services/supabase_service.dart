@@ -18,6 +18,7 @@ class SupabaseService {
         .select('''
          id,
          name,
+         created_at,
          expiry_date,
          quantity,
          reminder_days_before,
