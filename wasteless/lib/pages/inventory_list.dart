@@ -6,7 +6,7 @@ import 'donation_page.dart';
 
 class InventoryList extends StatefulWidget {
   final SupabaseService supa;
-  const InventoryList({required this.supa, Key? key}) : super(key: key);
+  const InventoryList({required this.supa, super.key});
 
   @override
   InventoryListState createState() => InventoryListState();

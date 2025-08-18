@@ -191,4 +191,29 @@ class SupabaseService {
   Future<void> deleteDonation(String id) async {
     await client.from('donations').delete().eq('id', id);
   }
+
+  /// Fetch this user's inventory filtered by category
+  Future<List<Map<String, dynamic>>> fetchInventoryByCategory(String categoryId) async {
+    final uid = client.auth.currentUser!.id;
+    final data = await client
+        .from('inventory_items')
+        .select('''
+         id,
+         name,
+         created_at,
+         expiry_date,
+         quantity,
+         reminder_days_before,
+         reminder_hours_before,
+         inventory_item_categories!inner(
+            category_id,
+            categories ( id, name, icon_url )
+         )
+        ''')
+        .eq('user_id', uid)
+        .eq('inventory_item_categories.category_id', categoryId)
+        .order('expiry_date', ascending: true);
+    return List<Map<String, dynamic>>.from(data);
+  }
+
 }
