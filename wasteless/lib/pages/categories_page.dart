@@ -1,4 +1,5 @@
 // lib/pages/categories_page.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
@@ -15,6 +16,7 @@ class CategoriesPage extends StatefulWidget {
 
 class _CategoriesPageState extends State<CategoriesPage> {
   late Future<List<Map<String, dynamic>>> _catsFuture;
+  StreamSubscription<void>? _inventorySub;
 
   String? _selectedCatId;
   String? _selectedCatName;
@@ -24,6 +26,18 @@ class _CategoriesPageState extends State<CategoriesPage> {
   void initState() {
     super.initState();
     _catsFuture = widget.supa.fetchCategories();
+    // listen for inventory changes and refresh if a category is selected
+    _inventorySub = widget.supa.onInventoryChanged.listen((_) {
+      if (mounted && _selectedCatId != null) {
+        _refreshItems();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _inventorySub?.cancel();
+    super.dispose();
   }
 
   @override
