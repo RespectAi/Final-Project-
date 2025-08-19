@@ -1,4 +1,3 @@
-
 # WasteLess App
 
 **WasteLess** is a mobile application that helps users track, manage, and share surplus food to reduce waste and combat hunger. Built with Flutter on the frontend and Supabase on the backend, WasteLess leverages real-time synchronization, secure authentication, and push notifications to deliver a seamless experience.
@@ -60,8 +59,8 @@ A mobile app that **tracks inventory**, **notifies users when items are about to
 **1. Clone the repository**
 
 ```bash
-git clone [https://github.com/RespectAi/wasteless_app.git](https://github.com/RespectAi/Final-Project-.git)
-cd wasteless_app
+git clone https://github.com/RespectAi/Final-Project-.git
+cd wasteless
 ```
 
 **2. Install Flutter dependencies**
@@ -107,7 +106,7 @@ flutter run
 
 -----
 
-### **Live Features **
+### **Next Steps**
 
   * Implement user authentication and onboarding flow ✅
   * Build inventory CRUD screens in Flutter ✅
