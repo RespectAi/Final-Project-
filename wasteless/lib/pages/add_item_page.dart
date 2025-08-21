@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 import '../widgets/common.dart';
 
-
 class AddItemPage extends StatefulWidget {
   static const route = '/add';
   final SupabaseService supa;
@@ -17,11 +16,22 @@ class _AddItemPageState extends State<AddItemPage> {
   late Future<List<Map<String, dynamic>>> _allCats;
   final Set<String> _selectedCatIds = {};
   final _formKey = GlobalKey<FormState>();
+
+  // Form state
   String _name = '';
   DateTime _expiry = DateTime.now().add(const Duration(days: 7));
   int _quantity = 1;
   int _remindDays = 1;
   int _remindHours = 0;
+
+  // Focus nodes for keyboard "Enter -> next" behavior
+  final FocusNode _nameFocus = FocusNode();
+  final FocusNode _quantityFocus = FocusNode();
+  final FocusNode _remindDaysFocus = FocusNode();
+  final FocusNode _remindHoursFocus = FocusNode();
+
+  // Loading flag to prevent double submits and show spinner in button
+  bool _loading = false;
 
   @override
   void initState() {
@@ -29,15 +39,32 @@ class _AddItemPageState extends State<AddItemPage> {
     _allCats = widget.supa.fetchCategories();
   }
 
+  @override
+  void dispose() {
+    _nameFocus.dispose();
+    _quantityFocus.dispose();
+    _remindDaysFocus.dispose();
+    _remindHoursFocus.dispose();
+    super.dispose();
+  }
+
   Future<void> _submit() async {
+    // If already submitting, ignore
+    if (_loading) return;
+
     if (!_formKey.currentState!.validate()) return;
+
     if (_selectedCatIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select at least one category')),
       );
       return;
     }
+
+    // Save current field values
     _formKey.currentState!.save();
+
+    setState(() => _loading = true);
 
     try {
       await widget.supa.addItem(
@@ -49,6 +76,7 @@ class _AddItemPageState extends State<AddItemPage> {
         categoryIds: _selectedCatIds.toList(),
       );
 
+      // If add succeeded, pop returning true (so caller can refresh)
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (err, stack) {
@@ -56,6 +84,9 @@ class _AddItemPageState extends State<AddItemPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add item: $err')));
       }
+    } finally {
+      // If we are still mounted (i.e. didn't pop), clear loading state so UI updates
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -69,21 +100,34 @@ class _AddItemPageState extends State<AddItemPage> {
           key: _formKey,
           child: ListView(
             children: [
+              // Item name -> pressing enter moves to quantity
               TextFormField(
+                focusNode: _nameFocus,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(labelText: 'Item Name'),
                 onSaved: (v) => _name = v!.trim(),
                 validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_quantityFocus),
               ),
               const SizedBox(height: 12),
+
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
+                      focusNode: _quantityFocus,
+                      textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(labelText: 'Quantity'),
                       keyboardType: TextInputType.number,
                       initialValue: '1',
                       onSaved: (v) => _quantity = int.tryParse(v ?? '1') ?? 1,
-                      validator: (v) => (v == null || int.tryParse(v) == null || int.parse(v) < 1) ? 'Enter a positive number' : null,
+                      validator: (v) {
+                        if (v == null) return 'Required';
+                        final n = int.tryParse(v);
+                        if (n == null || n < 1) return 'Enter a positive number';
+                        return null;
+                      },
+                      onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindDaysFocus),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -94,23 +138,34 @@ class _AddItemPageState extends State<AddItemPage> {
                       SizedBox(
                         width: 110,
                         child: TextFormField(
+                          focusNode: _remindDaysFocus,
+                          textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(hintText: '1'),
                           keyboardType: TextInputType.number,
                           initialValue: '1',
                           onSaved: (v) => _remindDays = int.tryParse(v ?? '1') ?? 1,
+                          onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindHoursFocus),
                         ),
                       ),
                     ],
                   ),
                 ],
               ),
+
               const SizedBox(height: 12),
               TextFormField(
+                focusNode: _remindHoursFocus,
+                textInputAction: TextInputAction.done,
                 decoration: const InputDecoration(labelText: 'Remind (hours)'),
                 keyboardType: TextInputType.number,
                 initialValue: '0',
                 onSaved: (v) => _remindHours = int.tryParse(v ?? '0') ?? 0,
+                onFieldSubmitted: (_) {
+                  // When user presses Enter on the last field, submit the form
+                  _submit();
+                },
               ),
+
               const SizedBox(height: 12),
               FutureBuilder<List<Map<String, dynamic>>>(
                 future: _allCats,
@@ -167,6 +222,7 @@ class _AddItemPageState extends State<AddItemPage> {
                   );
                 },
               ),
+
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -186,9 +242,24 @@ class _AddItemPageState extends State<AddItemPage> {
                 ],
               ),
               const SizedBox(height: 16),
+
+              // Add button: disabled while loading, shows spinner
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(onPressed: _submit, child: const Text('Add Item')),
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _submit,
+                  child: _loading
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))),
+                            SizedBox(width: 12),
+                            Text('Adding...'),
+                          ],
+                        )
+                      : const Text('Add Item'),
+                ),
               ),
             ],
           ),
