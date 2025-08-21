@@ -330,7 +330,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
 
           final dateFmt = DateFormat('yMMMd');
           return ListView.builder(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(1),
             itemCount: items.length,
             itemBuilder: (_, i) {
               final item = items[i];
