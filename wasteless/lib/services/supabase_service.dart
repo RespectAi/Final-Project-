@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -558,9 +559,64 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     }
   }
 
+  /// Load saved user context from local storage
+  Future<void> loadSavedUserContext() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedUserId = prefs.getString('active_local_user_id');
+      final savedUserName = prefs.getString('active_local_user_name');
+      final savedIsAdmin = prefs.getBool('is_admin_mode') ?? false;
+      
+      if (savedUserId != null && savedUserName != null) {
+        activeLocalUserId = savedUserId;
+        activeLocalUserName = savedUserName;
+        _isAdminMode = false;
+      } else if (savedIsAdmin) {
+        _isAdminMode = true;
+        activeLocalUserId = null;
+        activeLocalUserName = null;
+      }
+    } catch (e) {
+      debugPrint('Error loading saved user context: $e');
+    }
+  }
+
+  /// Save user context to local storage
+  Future<void> saveUserContext() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (activeLocalUserId != null && activeLocalUserName != null) {
+        await prefs.setString('active_local_user_id', activeLocalUserId!);
+        await prefs.setString('active_local_user_name', activeLocalUserName!);
+        await prefs.setBool('is_admin_mode', false);
+      } else if (_isAdminMode) {
+        await prefs.setBool('is_admin_mode', true);
+        await prefs.remove('active_local_user_id');
+        await prefs.remove('active_local_user_name');
+      }
+    } catch (e) {
+      debugPrint('Error saving user context: $e');
+    }
+  }
+
+  /// Clear saved user context
+  Future<void> clearUserContext() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('active_local_user_id');
+      await prefs.remove('active_local_user_name');
+      await prefs.remove('is_admin_mode');
+    } catch (e) {
+      debugPrint('Error clearing user context: $e');
+    }
+  }
+
   // Active local user context
   String? activeLocalUserId;
   String? activeLocalUserName;
+  bool _isAdminMode = false;
+
+  bool get isAdminMode => _isAdminMode;
 
   /// Verify local user password and set active local user
   Future<bool> verifyAndSelectLocalUser(String localUserId, String password) async {
@@ -575,10 +631,36 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
       if (ok) {
         activeLocalUserId = row['id'] as String;
         activeLocalUserName = row['name'] as String?;
+        _isAdminMode = false;
+        await saveUserContext();
       }
       return ok;
     } catch (e) {
       debugPrint('Error verifying local user: $e');
+      return false;
+    }
+  }
+
+  /// Set admin mode and clear local user context
+  Future<void> setAdminMode() async {
+    _isAdminMode = true;
+    activeLocalUserId = null;
+    activeLocalUserName = null;
+    await saveUserContext();
+  }
+
+  /// Check if account has any local users
+  Future<bool> hasLocalUsers() async {
+    try {
+      final accountId = await _getOrCreateAccountId();
+      final result = await client
+          .from('local_users')
+          .select('id')
+          .eq('account_id', accountId)
+          .limit(1);
+      return result.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error checking for local users: $e');
       return false;
     }
   }

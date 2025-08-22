@@ -137,6 +137,8 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _rescheduleAll();
+    // Load saved user context when app starts
+    widget.supa.loadSavedUserContext();
   }
 
   Future<void> _rescheduleAll() async {

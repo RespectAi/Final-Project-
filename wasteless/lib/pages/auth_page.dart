@@ -27,10 +27,27 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
       final session = data.session;
       if (session != null) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => LocalUserGate(supa: widget.supa)));
+        // Check if account has local users
+        final hasLocalUsers = await widget.supa.hasLocalUsers();
+        if (hasLocalUsers) {
+          // Load saved user context first
+          await widget.supa.loadSavedUserContext();
+          
+          // If user was previously logged in as admin or local user, go directly to dashboard
+          if (widget.supa.isAdminMode || widget.supa.activeLocalUserId != null) {
+            Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
+          } else {
+            // Show local user picker
+            Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => LocalUserGate(supa: widget.supa)));
+          }
+        } else {
+          // No local users, go directly to dashboard as admin
+          await widget.supa.setAdminMode();
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
+        }
       }
     });
   }

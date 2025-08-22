@@ -1,5 +1,6 @@
 // lib/pages/user_page.dart
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../widgets/common.dart';
 import 'package:intl/intl.dart';
@@ -55,6 +56,18 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
         context,
         'User Management',
         showBackIfCanPop: true,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'logout') {
+                _logout();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'logout', child: Text('Logout')),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -437,6 +450,13 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
     // When admin chooses "Continue as Admin", activeLocalUserId will be null.
     return widget.supa.activeLocalUserId == null;
   }
+
+  Future<void> _logout() async {
+    // Clear user context
+    await widget.supa.clearUserContext();
+    // Sign out from Supabase
+    await Supabase.instance.client.auth.signOut();
+  }
   Color _getRoleColor(String? role) {
     switch (role) {
       case 'admin':
@@ -575,6 +595,14 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                   );
                   Navigator.pop(context);
                   _refreshData();
+                  
+                  // If this was the first local user created, redirect to local user gate
+                  final allUsers = await widget.supa.fetchLocalUsers();
+                  if (allUsers.length == 1) {
+                    // First user created, redirect to local user gate
+                    if (!mounted) return;
+                    Navigator.of(context).pushReplacementNamed('/local-user');
+                  }
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error: $e')),

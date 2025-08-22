@@ -78,9 +78,8 @@ class _LocalUserGateState extends State<LocalUserGate> {
     try {
       // Re-authenticate by signing in with password; keeps session for same user
       await Supabase.instance.client.auth.signInWithPassword(email: email, password: adminPassController.text);
-      // Clear any local user context to mark admin mode
-      widget.supa.activeLocalUserId = null;
-      widget.supa.activeLocalUserName = null;
+      // Set admin mode and save context
+      await widget.supa.setAdminMode();
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
     } catch (e) {
