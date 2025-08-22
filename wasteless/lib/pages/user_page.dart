@@ -100,7 +100,7 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
           ),
         ],
       ),
-      floatingActionButton: _currentTabIndex == 0
+      floatingActionButton: _currentTabIndex == 0 && _isAdminContext()
           ? FloatingActionButton(
               onPressed: () => _showCreateLocalUserDialog(context),
               child: const Icon(Icons.add),
@@ -164,13 +164,15 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                   ),
                   title: Text(user['name'] ?? 'Unknown'),
                   subtitle: Text('Created: ${DateFormat('MMM dd, yyyy').format(DateTime.parse(user['created_at']))}'),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) => _handleLocalUserAction(value, user),
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                    ],
-                  ),
+                  trailing: _isAdminContext()
+                      ? PopupMenuButton<String>(
+                          onSelected: (value) => _handleLocalUserAction(value, user),
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(value: 'edit', child: Text('Edit')),
+                            PopupMenuItem(value: 'delete', child: Text('Delete')),
+                          ],
+                        )
+                      : null,
                 ),
               );
             },
@@ -243,7 +245,7 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                     ],
                   ),
                   isThreeLine: true,
-                  trailing: _canManageUser(member)
+                  trailing: _isAdminContext() && _canManageUser(member)
                       ? PopupMenuButton<String>(
                           onSelected: (value) => _handleMemberAction(value, member),
                           itemBuilder: (context) => [
@@ -325,7 +327,7 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                     ],
                   ),
                   isThreeLine: true,
-                  trailing: _canManageRequest(request)
+                  trailing: _isAdminContext() && _canManageRequest(request)
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -410,7 +412,7 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                     ],
                   ),
                   isThreeLine: true,
-                  trailing: _canManageFridge(fridge)
+                  trailing: _isAdminContext() && _canManageFridge(fridge)
                       ? PopupMenuButton<String>(
                           onSelected: (value) => _handleFridgeAction(value, fridge),
                           itemBuilder: (context) => [
@@ -430,6 +432,11 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
   }
 
   // Helper methods
+  bool _isAdminContext() {
+    // If a local user is active, consider them non-admin context.
+    // When admin chooses "Continue as Admin", activeLocalUserId will be null.
+    return widget.supa.activeLocalUserId == null;
+  }
   Color _getRoleColor(String? role) {
     switch (role) {
       case 'admin':
@@ -520,16 +527,37 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
   // Dialog methods
   void _showCreateLocalUserDialog(BuildContext context) {
     final nameController = TextEditingController();
+    final passController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Create Local User'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(
-            labelText: 'User Name',
-            hintText: 'Enter the name of the local user',
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'User Name',
+                  hintText: 'Enter the name of the local user',
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Name required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: passController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  hintText: 'Choose a password for this local user',
+                ),
+                validator: (v) => (v == null || v.length < 4) ? 'Min 4 characters' : null,
+              ),
+            ],
           ),
         ),
         actions: [
@@ -539,9 +567,12 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (nameController.text.trim().isNotEmpty) {
+              if (formKey.currentState!.validate()) {
                 try {
-                  await widget.supa.createLocalUser(nameController.text.trim());
+                  await widget.supa.createLocalUserWithPassword(
+                    nameController.text.trim(),
+                    passController.text,
+                  );
                   Navigator.pop(context);
                   _refreshData();
                 } catch (e) {
@@ -560,16 +591,34 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
 
   void _showEditLocalUserDialog(BuildContext context, Map<String, dynamic> user) {
     final nameController = TextEditingController(text: user['name']);
+    final passController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Edit Local User'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(
-            labelText: 'User Name',
-            hintText: 'Enter the new name',
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'User Name',
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Name required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: passController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New Password (optional)',
+                ),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -579,9 +628,12 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (nameController.text.trim().isNotEmpty) {
+              if (formKey.currentState!.validate()) {
                 try {
                   await widget.supa.updateLocalUser(user['id'], nameController.text.trim());
+                  if (passController.text.isNotEmpty) {
+                    await widget.supa.updateLocalUserPassword(user['id'], passController.text);
+                  }
                   Navigator.pop(context);
                   _refreshData();
                 } catch (e) {

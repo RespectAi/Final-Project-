@@ -1,6 +1,8 @@
 // lib/services/supabase_service.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart' as crypto;
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -417,6 +419,27 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     }
   }
 
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = crypto.sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  /// Create a local user with password (hashed on client)
+  Future<void> createLocalUserWithPassword(String name, String password) async {
+    try {
+      final accountId = await _getOrCreateAccountId();
+      await client.from('local_users').insert({
+        'name': name,
+        'account_id': accountId,
+        'password_hash': _hashPassword(password),
+      });
+    } catch (e) {
+      debugPrint('Error creating local user with password: $e');
+      rethrow;
+    }
+  }
+
   /// Update a local user's name
   Future<void> updateLocalUser(String userId, String newName) async {
     try {
@@ -426,6 +449,19 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           .eq('id', userId);
     } catch (e) {
       debugPrint('Error updating local user: $e');
+      rethrow;
+    }
+  }
+
+  /// Optionally update a local user's password
+  Future<void> updateLocalUserPassword(String userId, String newPassword) async {
+    try {
+      await client
+          .from('local_users')
+          .update({'password_hash': _hashPassword(newPassword)})
+          .eq('id', userId);
+    } catch (e) {
+      debugPrint('Error updating local user password: $e');
       rethrow;
     }
   }
@@ -519,6 +555,31 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     } catch (e) {
       debugPrint('Error rejecting join request: $e');
       rethrow;
+    }
+  }
+
+  // Active local user context
+  String? activeLocalUserId;
+  String? activeLocalUserName;
+
+  /// Verify local user password and set active local user
+  Future<bool> verifyAndSelectLocalUser(String localUserId, String password) async {
+    try {
+      final row = await client
+          .from('local_users')
+          .select('id, name, password_hash')
+          .eq('id', localUserId)
+          .maybeSingle();
+      if (row == null) return false;
+      final ok = row['password_hash'] == _hashPassword(password);
+      if (ok) {
+        activeLocalUserId = row['id'] as String;
+        activeLocalUserName = row['name'] as String?;
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('Error verifying local user: $e');
+      return false;
     }
   }
 

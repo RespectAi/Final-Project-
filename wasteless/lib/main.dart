@@ -14,6 +14,7 @@ import 'pages/inventory_list.dart';
 import 'pages/waste_log_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/user_page.dart';
+import 'pages/local_user_gate.dart';
 import 'services/supabase_service.dart';
 import 'widgets/common.dart';
 import 'pages/categories_page.dart';
@@ -98,6 +99,7 @@ class WasteLessApp extends StatelessWidget {
         DonationPage.route: (_) => DonationPage(supa: supa),
         CategoriesPage.route: (_) => CategoriesPage(supa: supa),
         UserPage.route: (_) => UserPage(supa: supa),
+        '/local-user': (_) => LocalUserGate(supa: supa),
       },
     );
   }
