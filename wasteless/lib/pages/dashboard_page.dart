@@ -4,6 +4,7 @@ import '../services/supabase_service.dart';
 import 'package:intl/intl.dart';
 import '../widgets/common.dart';
 import 'categories_page.dart';
+import 'user_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final SupabaseService supa;
@@ -80,26 +81,16 @@ class DashboardPageState extends State<DashboardPage> {
                               children: [
                                 AspectRatio(
                                   aspectRatio: 1,
-                                child: _buildBigCard('Categories', Icons.category, onTap: () async {
-                                debugPrint('DEBUG: Categories tile tapped - fetching categories then navigating');
-                                  try {
-    final cats = await widget.supa.fetchCategories();
-    if (cats.isNotEmpty) {
-      final id = cats.first['id'].toString();
-      final name = cats.first['name'] as String? ?? '';
-      debugPrint('DEBUG: Navigating to CategoriesPage with id=$id name=$name');
-      Navigator.of(context).pushNamed(CategoriesPage.route, arguments: {'categoryId': id, 'categoryName': name});
-    } else {
-      debugPrint('DEBUG: No categories found - navigating to empty CategoriesPage');
-      Navigator.of(context).pushNamed(CategoriesPage.route);
-    }
-                                  } catch (e, st) {
-                                debugPrint('DEBUG: Error fetching categories: $e\n$st');
-                                  // Fallback to direct navigation (so tap still works)
-                                  Navigator.of(context).pushNamed(CategoriesPage.route);
-                                    }
-                                   },
-                                  ),
+                                  child: _buildBigCard('Categories', Icons.category, onTap: () async {
+                                  final cats = await widget.supa.fetchCategories();
+                                  if (cats.isNotEmpty) {
+                                     final id = cats.first['id'].toString();
+                                     final name = cats.first['name'] as String? ?? '';
+                                     Navigator.of(context).pushNamed(CategoriesPage.route, arguments: {'categoryId': id, 'categoryName': name});
+                                  } else {
+                                     Navigator.of(context).pushNamed(CategoriesPage.route);
+                                  }
+                                  },),
                                 ),
                                 const SizedBox(height: 12),
                                 AspectRatio(
@@ -109,7 +100,7 @@ class DashboardPageState extends State<DashboardPage> {
                                 const SizedBox(height: 12),
                                 AspectRatio(
                                   aspectRatio: 1,
-                                  child: _buildBigCard('Users', Icons.people, onTap: () => showCornerToast(context, message: 'Users — coming soon', alignment: Alignment.topLeft)),
+                                  child: _buildBigCard('Users', Icons.people, onTap: () => Navigator.pushNamed(context, UserPage.route)),
                                 ),
                               ],
                             )
@@ -118,25 +109,7 @@ class DashboardPageState extends State<DashboardPage> {
                               crossAxisCount: 2,
                               childAspectRatio: 1.1,
                               children: [
-                                _buildBigCard('Categories', Icons.category, onTap: () async {
-                                debugPrint('DEBUG: Categories tile tapped - fetching categories then navigating');
-                                try {
-                                  final cats = await widget.supa.fetchCategories();
-                                  if (cats.isNotEmpty) {
-                                  final id = cats.first['id'].toString();
-                                  final name = cats.first['name'] as String? ?? '';
-                                debugPrint('DEBUG: Navigating to CategoriesPage with id=$id name=$name');
-                                Navigator.of(context).pushNamed(CategoriesPage.route, arguments: {'categoryId': id, 'categoryName': name});
-                                     } else {
-                                debugPrint('DEBUG: No categories found - navigating to empty CategoriesPage');
-                                Navigator.of(context).pushNamed(CategoriesPage.route);
-                                      }
-                                    } catch (e, st) {
-                                debugPrint('DEBUG: Error fetching categories: $e\n$st');
-                                      // Fallback to direct navigation (so tap still works)
-                                Navigator.of(context).pushNamed(CategoriesPage.route);
-                                    }
-                                    },),
+                                _buildBigCard('Categories', Icons.category, onTap: () => Navigator.pushNamed(context, CategoriesPage.route)),
                                 _buildBigCard('Fridges', Icons.kitchen, onTap: () => showCornerToast(context, message: 'Fridges — coming soon', alignment: Alignment.topLeft)),
                                 _buildBigCard('Users', Icons.people, onTap: () => showCornerToast(context, message: 'Users — coming soon', alignment: Alignment.topLeft)),
                               ],
@@ -421,11 +394,8 @@ class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin 
   @override
   void initState() {
     super.initState();
-    // slower/faster: adjust Duration(seconds: 12)
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))
-      ..repeat();
-    // we'll shift from 0 -> -1 so the child (two copies of the text) scrolls left
-    _anim = Tween<double>(begin: 0.0, end: -1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
+    _anim = Tween<double>(begin: 1, end: -1).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
   }
 
   @override
@@ -437,39 +407,19 @@ class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin 
   @override
   Widget build(BuildContext context) {
     final text = widget.messages.join('     •     ');
-    final textWidget = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Text(text, style: const TextStyle(color: Colors.white)),
-    );
-
     return Container(
       color: Colors.green[800],
-      // ClipRect ensures only the visible portion is shown
-      child: ClipRect(
-        child: AnimatedBuilder(
-          animation: _anim,
-          builder: (_, __) {
-            // FractionalTranslation is fine if the child can be larger than the viewport.
-            // Use OverflowBox so the Row is allowed to be wider than the parent without throwing an overflow.
-            return FractionalTranslation(
-              translation: Offset(_anim.value, 0),
-              child: OverflowBox(
-                maxWidth: double.infinity,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  children: [
-                    // duplicate the text so we can scroll continuously
-                    textWidget,
-                    const SizedBox(width: 40),
-                    textWidget,
-                    // additional spacing to reduce the chance of visible seam
-                    const SizedBox(width: 16),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+      child: AnimatedBuilder(
+        animation: _anim,
+        builder: (_, __) {
+          return FractionalTranslation(
+            translation: Offset(_anim.value, 0),
+            child: Row(children: [
+              const SizedBox(width: 16),
+              Text(text, style: const TextStyle(color: Colors.white)),
+            ]),
+          );
+        },
       ),
     );
   }
