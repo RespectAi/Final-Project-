@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../widgets/common.dart';
 import 'package:intl/intl.dart';
+import '../pages/auth_page.dart';
 
 class UserPage extends StatefulWidget {
   static const route = '/users';
@@ -57,15 +58,10 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
         'User Management',
         showBackIfCanPop: true,
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'logout') {
-                _logout();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'logout', child: Text('Logout')),
-            ],
+          IconButton(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
           ),
         ],
       ),
@@ -456,6 +452,14 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
     await widget.supa.clearUserContext();
     // Sign out from Supabase
     await Supabase.instance.client.auth.signOut();
+    
+    // Navigate back to auth page and clear all previous routes
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => AuthGate(supa: widget.supa)),
+        (route) => false,
+      );
+    }
   }
   Color _getRoleColor(String? role) {
     switch (role) {

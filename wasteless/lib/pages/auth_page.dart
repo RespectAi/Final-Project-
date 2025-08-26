@@ -48,6 +48,9 @@ class _AuthGateState extends State<AuthGate> {
           await widget.supa.setAdminMode();
           Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
         }
+      } else {
+        // User signed out, stay on auth page
+        // The auth page will be shown by default when session is null
       }
     });
   }
