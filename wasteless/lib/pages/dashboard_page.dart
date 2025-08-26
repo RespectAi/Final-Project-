@@ -22,7 +22,7 @@ class DashboardPageState extends State<DashboardPage> {
   final List<String> announcements = [
     "Upcoming Feature: AI-based expiry prediction",
     "Tip: Donate unused food before it spoils",
-    "New: Scan QR codes to add items faster"
+    "New: Scan QR codes to add items faster",
   ];
 
   int expandedIndex = -1; // For inline expansion
@@ -81,26 +81,55 @@ class DashboardPageState extends State<DashboardPage> {
                               children: [
                                 AspectRatio(
                                   aspectRatio: 1,
-                                  child: _buildBigCard('Categories', Icons.category, onTap: () async {
-                                  final cats = await widget.supa.fetchCategories();
-                                  if (cats.isNotEmpty) {
-                                     final id = cats.first['id'].toString();
-                                     final name = cats.first['name'] as String? ?? '';
-                                     Navigator.of(context).pushNamed(CategoriesPage.route, arguments: {'categoryId': id, 'categoryName': name});
-                                  } else {
-                                     Navigator.of(context).pushNamed(CategoriesPage.route);
-                                  }
-                                  },),
+                                  child: _buildBigCard(
+                                    'Categories',
+                                    Icons.category,
+                                    onTap: () async {
+                                      final cats = await widget.supa
+                                          .fetchCategories();
+                                      if (cats.isNotEmpty) {
+                                        final id = cats.first['id'].toString();
+                                        final name =
+                                            cats.first['name'] as String? ?? '';
+                                        Navigator.of(context).pushNamed(
+                                          CategoriesPage.route,
+                                          arguments: {
+                                            'categoryId': id,
+                                            'categoryName': name,
+                                          },
+                                        );
+                                      } else {
+                                        Navigator.of(
+                                          context,
+                                        ).pushNamed(CategoriesPage.route);
+                                      }
+                                    },
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 AspectRatio(
                                   aspectRatio: 1,
-                                  child: _buildBigCard('Fridges', Icons.kitchen, onTap: () => showCornerToast(context, message: 'Fridges — coming soon', alignment: Alignment.topLeft)),
+                                  child: _buildBigCard(
+                                    'Fridges',
+                                    Icons.kitchen,
+                                    onTap: () => showCornerToast(
+                                      context,
+                                      message: 'Fridges — coming soon',
+                                      alignment: Alignment.topLeft,
+                                    ),
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 AspectRatio(
                                   aspectRatio: 1,
-                                  child: _buildBigCard('Users', Icons.people, onTap: () => Navigator.pushNamed(context, UserPage.route)),
+                                  child: _buildBigCard(
+                                    'Users',
+                                    Icons.people,
+                                    onTap: () => Navigator.pushNamed(
+                                      context,
+                                      UserPage.route,
+                                    ),
+                                  ),
                                 ),
                               ],
                             )
@@ -109,9 +138,31 @@ class DashboardPageState extends State<DashboardPage> {
                               crossAxisCount: 2,
                               childAspectRatio: 1.1,
                               children: [
-                                _buildBigCard('Categories', Icons.category, onTap: () => Navigator.pushNamed(context, CategoriesPage.route)),
-                                _buildBigCard('Fridges', Icons.kitchen, onTap: () => showCornerToast(context, message: 'Fridges — coming soon', alignment: Alignment.topLeft)),
-                                _buildBigCard('Users', Icons.people, onTap: () => showCornerToast(context, message: 'Users — coming soon', alignment: Alignment.topLeft)),
+                                _buildBigCard(
+                                  'Categories',
+                                  Icons.category,
+                                  onTap: () => Navigator.pushNamed(
+                                    context,
+                                    CategoriesPage.route,
+                                  ),
+                                ),
+                                _buildBigCard(
+                                  'Fridges',
+                                  Icons.kitchen,
+                                  onTap: () => showCornerToast(
+                                    context,
+                                    message: 'Fridges — coming soon',
+                                    alignment: Alignment.topLeft,
+                                  ),
+                                ),
+                                _buildBigCard(
+                                  'Users',
+                                  Icons.people,
+                                  onTap: () => Navigator.pushNamed(
+                                    context,
+                                    UserPage.route,
+                                  ),
+                                ),
                               ],
                             ),
                     ),
@@ -218,17 +269,34 @@ class DashboardPageState extends State<DashboardPage> {
                     itemCount: items.length,
                     itemBuilder: (_, index) {
                       final item = items[index];
-                      final links = item['inventory_item_categories'] as List<dynamic>? ?? [];
+                      final links =
+                          item['inventory_item_categories'] as List<dynamic>? ??
+                          [];
                       final cats = links
-                          .map((link) => (link['categories'] as Map<String, dynamic>? ?? {}))
+                          .map(
+                            (link) =>
+                                (link['categories'] as Map<String, dynamic>? ??
+                                {}),
+                          )
                           .toList();
                       final firstCat = cats.isNotEmpty ? cats.first : null;
-                      final catIcon = firstCat != null ? (firstCat['icon_url'] as String?) : null;
-                      final name = (item['name'] as String?)?.trim().isNotEmpty == true
+                      final catIcon = firstCat != null
+                          ? (firstCat['icon_url'] as String?)
+                          : null;
+                      final name =
+                          (item['name'] as String?)?.trim().isNotEmpty == true
                           ? (item['name'] as String)
                           : 'Unnamed';
-                      final expiry = DateTime.tryParse(item['expiry_date'] as String? ?? '') ?? DateTime.now();
-                      final createdAt = DateTime.tryParse(item['created_at'] as String? ?? '') ?? DateTime.now();
+                      final expiry =
+                          DateTime.tryParse(
+                            item['expiry_date'] as String? ?? '',
+                          ) ??
+                          DateTime.now();
+                      final createdAt =
+                          DateTime.tryParse(
+                            item['created_at'] as String? ?? '',
+                          ) ??
+                          DateTime.now();
                       final now = DateTime.now();
                       final diff = expiry.difference(now);
                       final daysLeft = diff.inDays;
@@ -262,9 +330,11 @@ class DashboardPageState extends State<DashboardPage> {
                                     : 'Expired ${-daysLeft} day(s) ago',
                               ),
                               trailing: IconButton(
-                                icon: Icon(isExpanded
-                                    ? Icons.keyboard_arrow_up
-                                    : Icons.keyboard_arrow_down),
+                                icon: Icon(
+                                  isExpanded
+                                      ? Icons.keyboard_arrow_up
+                                      : Icons.keyboard_arrow_down,
+                                ),
                                 onPressed: () => setState(() {
                                   expandedIndex = isExpanded ? -1 : index;
                                 }),
@@ -272,7 +342,12 @@ class DashboardPageState extends State<DashboardPage> {
                             ),
                             if (isExpanded)
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
+                                ),
                                 child: Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
@@ -281,50 +356,79 @@ class DashboardPageState extends State<DashboardPage> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Row(children: [
-                                        const Icon(Icons.calendar_today, size: 16),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            'Entry: ${dateFmt.format(createdAt.toLocal())}',
-                                            softWrap: true,
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.calendar_today,
+                                            size: 16,
                                           ),
-                                        ),
-                                      ]),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              'Entry: ${dateFmt.format(createdAt.toLocal())}',
+                                              softWrap: true,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                       const SizedBox(height: 8),
-                                      Row(children: [
-                                        const Icon(Icons.event, size: 16),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            'Expiry: ${dateFmt.format(expiry.toLocal())}',
-                                            softWrap: true,
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.event, size: 16),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              'Expiry: ${dateFmt.format(expiry.toLocal())}',
+                                              softWrap: true,
+                                            ),
                                           ),
-                                        ),
-                                      ]),
+                                        ],
+                                      ),
                                       const SizedBox(height: 10),
-                                      const Text('Categories', style: TextStyle(fontWeight: FontWeight.w600)),
+                                      const Text(
+                                        'Categories',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                       const SizedBox(height: 6),
                                       Wrap(
                                         spacing: 8,
                                         runSpacing: 6,
                                         children: cats.map((c) {
-                                          final iconUrl = (c['icon_url'] as String?) ?? '';
-                                          final label = (c['name'] as String?) ?? '';
-                                          final catId = (c['id']?.toString() ?? '');
+                                          final iconUrl =
+                                              (c['icon_url'] as String?) ?? '';
+                                          final label =
+                                              (c['name'] as String?) ?? '';
+                                          final catId =
+                                              (c['id']?.toString() ?? '');
                                           return ActionChip(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 0,
+                                            ),
                                             avatar: iconUrl.isNotEmpty
-                                                ? Image.network(iconUrl, width: 16, height: 16)
-                                                : const Icon(Icons.eco, size: 16),
+                                                ? Image.network(
+                                                    iconUrl,
+                                                    width: 16,
+                                                    height: 16,
+                                                  )
+                                                : const Icon(
+                                                    Icons.eco,
+                                                    size: 16,
+                                                  ),
                                             label: Text(label),
                                             onPressed: () {
                                               if (catId.isNotEmpty) {
                                                 Navigator.of(context).pushNamed(
                                                   CategoriesPage.route,
-                                                  arguments: {'categoryId': catId, 'categoryName': label},
+                                                  arguments: {
+                                                    'categoryId': catId,
+                                                    'categoryName': label,
+                                                  },
                                                 );
                                               }
                                             },
@@ -332,7 +436,12 @@ class DashboardPageState extends State<DashboardPage> {
                                         }).toList(),
                                       ),
                                       if (cats.isEmpty)
-                                        const Text('No category', style: TextStyle(color: Colors.black54)),
+                                        const Text(
+                                          'No category',
+                                          style: TextStyle(
+                                            color: Colors.black54,
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -352,13 +461,19 @@ class DashboardPageState extends State<DashboardPage> {
                         'Other Reminders',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       subtitle: const Text(
                         'Non-expiry reminders and tasks',
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       trailing: const Icon(Icons.alarm),
                       onTap: () => showCornerToast(
@@ -376,7 +491,6 @@ class DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
-
 }
 
 class _Marquee extends StatefulWidget {
@@ -387,15 +501,22 @@ class _Marquee extends StatefulWidget {
   State<_Marquee> createState() => _MarqueeState();
 }
 
-class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin {
+class _MarqueeState extends State<_Marquee>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
-    _anim = Tween<double>(begin: 1, end: -1).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 12),
+    )..repeat();
+    _anim = Tween<double>(
+      begin: 1,
+      end: -1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
   }
 
   @override
@@ -414,10 +535,12 @@ class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin 
         builder: (_, __) {
           return FractionalTranslation(
             translation: Offset(_anim.value, 0),
-            child: Row(children: [
-              const SizedBox(width: 16),
-              Text(text, style: const TextStyle(color: Colors.white)),
-            ]),
+            child: Row(
+              children: [
+                const SizedBox(width: 16),
+                Text(text, style: const TextStyle(color: Colors.white)),
+              ],
+            ),
           );
         },
       ),
