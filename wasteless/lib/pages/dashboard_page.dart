@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../widgets/common.dart';
 import 'categories_page.dart';
 import 'user_page.dart';
+import 'fridges_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final SupabaseService supa;
@@ -113,10 +114,9 @@ class DashboardPageState extends State<DashboardPage> {
                                   child: _buildBigCard(
                                     'Fridges',
                                     Icons.kitchen,
-                                    onTap: () => showCornerToast(
+                                    onTap: () => Navigator.pushNamed(
                                       context,
-                                      message: 'Fridges — coming soon',
-                                      alignment: Alignment.topLeft,
+                                      FridgesPage.route,
                                     ),
                                   ),
                                 ),
@@ -150,10 +150,9 @@ class DashboardPageState extends State<DashboardPage> {
                                 _buildBigCard(
                                   'Fridges',
                                   Icons.kitchen,
-                                  onTap: () => showCornerToast(
+                                  onTap: () => Navigator.pushNamed(
                                     context,
-                                    message: 'Fridges — coming soon',
-                                    alignment: Alignment.topLeft,
+                                    FridgesPage.route,
                                   ),
                                 ),
                                 _buildBigCard(

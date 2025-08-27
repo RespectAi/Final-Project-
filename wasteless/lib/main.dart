@@ -18,6 +18,7 @@ import 'pages/local_user_gate.dart';
 import 'services/supabase_service.dart';
 import 'widgets/common.dart';
 import 'pages/categories_page.dart';
+import 'pages/fridges_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -98,6 +99,7 @@ class WasteLessApp extends StatelessWidget {
         WasteLogPage.route: (_) => WasteLogPage(supa: supa),
         DonationPage.route: (_) => DonationPage(supa: supa),
         CategoriesPage.route: (_) => CategoriesPage(supa: supa),
+  FridgesPage.route: (_) => FridgesPage(supa: supa),
         UserPage.route: (_) => UserPage(supa: supa),
         '/local-user': (_) => LocalUserGate(supa: supa),
       },

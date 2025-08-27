@@ -1,0 +1,355 @@
+// lib/pages/fridges_page.dart
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../services/supabase_service.dart';
+import '../widgets/common.dart';
+import 'donation_page.dart';
+import 'waste_log_page.dart';
+
+class FridgesPage extends StatefulWidget {
+  static const route = '/fridges';
+  final SupabaseService supa;
+  const FridgesPage({required this.supa, Key? key}) : super(key: key);
+
+  @override
+  State<FridgesPage> createState() => _FridgesPageState();
+}
+
+class _FridgesPageState extends State<FridgesPage> {
+  late Future<List<Map<String, dynamic>>> _fridgesFuture;
+  final TextEditingController _joinCtrl = TextEditingController();
+  final DateFormat _dateFmt = DateFormat.yMMMd().add_jm();
+
+  @override
+  void initState() {
+    super.initState();
+    _fridgesFuture = widget.supa.fetchConnectedFridges();
+  }
+
+  @override
+  void dispose() {
+    _joinCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _fridgesFuture = widget.supa.fetchConnectedFridges();
+    });
+    await _fridgesFuture;
+  }
+
+  Future<void> _createFridge() async {
+    final nameCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Create Fridge'),
+        content: TextField(controller: nameCtrl, decoration: const InputDecoration(hintText: 'Fridge name')),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Create')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final id = await widget.supa.createFridge(name: nameCtrl.text.trim());
+    if (id != null) {
+      showCornerToast(context, message: 'Fridge created');
+      _refresh();
+    } else {
+      showCornerToast(context, message: 'Failed to create fridge');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: buildGradientAppBar(
+        context,
+        'Fridges',
+        actions: [
+          if (widget.supa.isAdminMode)
+            IconButton(icon: const Icon(Icons.add), tooltip: 'Create fridge', onPressed: _createFridge),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _fridgesFuture,
+          builder: (ctx, snap) {
+            if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+            if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+            final fridges = snap.data ?? [];
+            if (fridges.isEmpty) {
+              return ListView(
+                padding: const EdgeInsets.all(24),
+                children: [
+                  const Center(child: Text('No fridges found')),
+                  const SizedBox(height: 24),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(controller: _joinCtrl, decoration: const InputDecoration(hintText: 'Enter fridge code to join')),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            final code = _joinCtrl.text.trim();
+                            if (code.isEmpty) return;
+                            final ok = await widget.supa.joinFridgeWithCode(code);
+                            if (ok) {
+                              showCornerToast(context, message: 'Joined fridge');
+                              _joinCtrl.clear();
+                              _refresh();
+                            } else {
+                              showCornerToast(context, message: 'Failed to join');
+                            }
+                          },
+                          child: const Text('Join'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: fridges.length + 1,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (ctx, i) {
+                if (i == fridges.length) {
+                  // join-by-code footer
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      children: [
+                        Expanded(child: TextField(controller: _joinCtrl, decoration: const InputDecoration(hintText: 'Enter fridge code to join'))),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            final code = _joinCtrl.text.trim();
+                            if (code.isEmpty) return;
+                            final ok = await widget.supa.joinFridgeWithCode(code);
+                            if (ok) {
+                              showCornerToast(context, message: 'Joined fridge');
+                              _joinCtrl.clear();
+                              _refresh();
+                            } else {
+                              showCornerToast(context, message: 'Failed to join');
+                            }
+                          },
+                          child: const Text('Join'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final f = fridges[i];
+                final created = f['created_at'] != null ? DateTime.tryParse(f['created_at'].toString()) : null;
+                return Card(
+                  child: ListTile(
+                    title: Text((f['name'] as String?) ?? 'Fridge', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: created != null ? Text('Created: ${_dateFmt.format(created.toLocal())}') : null,
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      final changed = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(builder: (_) => FridgeDetailPage(supa: widget.supa, fridge: f)),
+                      );
+                      if (changed == true) _refresh();
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class FridgeDetailPage extends StatefulWidget {
+  final SupabaseService supa;
+  final Map<String, dynamic> fridge;
+  const FridgeDetailPage({required this.supa, required this.fridge, Key? key}) : super(key: key);
+
+  @override
+  State<FridgeDetailPage> createState() => _FridgeDetailPageState();
+}
+
+class _FridgeDetailPageState extends State<FridgeDetailPage> {
+  late Future<void> _loadFuture;
+  List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _members = [];
+  List<Map<String, dynamic>> _requests = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFuture = _loadAll();
+  }
+
+  Future<void> _loadAll() async {
+    final id = widget.fridge['id'] as String;
+    final items = await widget.supa.fetchFridgeItems(id);
+    final members = await widget.supa.fetchFridgeMembersForFridge(id);
+    final requests = await widget.supa.fetchPendingRequestsForFridge(id);
+    _items = items;
+    _members = members;
+    _requests = requests;
+  }
+
+  Future<void> _regenerateCode() async {
+    final id = widget.fridge['id'] as String;
+    final code = await widget.supa.regenerateFridgeCode(id);
+    if (code != null) showCornerToast(context, message: 'New code: $code', alignment: Alignment.topCenter);
+  }
+
+  Future<void> _approveRequest(String reqId) async {
+    await widget.supa.approveJoinRequest(reqId);
+    await _loadAll();
+    setState(() {});
+  }
+
+  Future<void> _rejectRequest(String reqId) async {
+    await widget.supa.rejectJoinRequest(reqId);
+    await _loadAll();
+    setState(() {});
+  }
+
+  Future<void> _deleteItem(String id) async {
+    await widget.supa.deleteInventoryItem(id);
+    await _loadAll();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+  final name = (widget.fridge['name'] as String?) ?? 'Fridge';
+    final currentUserId = widget.supa.getCurrentUserId();
+
+    return Scaffold(
+      appBar: AppBar(title: Text(name)),
+      body: FutureBuilder<void>(
+        future: _loadFuture,
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+
+          return Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+                    TextButton.icon(onPressed: _regenerateCode, icon: const Icon(Icons.refresh), label: const Text('Regenerate Code')),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text('Members', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 80,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _members.length,
+                    itemBuilder: (_, i) {
+                      final m = _members[i];
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Chip(
+                          avatar: const CircleAvatar(child: Icon(Icons.person, size: 16)),
+                          label: Text('${m['user_name']} • ${m['role'] ?? 'user'}'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('Items', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _items.isEmpty
+                      ? const Center(child: Text('No items in this fridge'))
+                      : ListView.separated(
+                          itemCount: _items.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (_, idx) {
+                            final it = _items[idx];
+                            final ownerId = it['user_id'] as String?;
+                            final isOwner = ownerId != null && ownerId == currentUserId;
+                            final canEdit = isOwner || widget.supa.isAdminMode;
+                            final expiry = DateTime.tryParse(it['expiry_date']?.toString() ?? '');
+                            return Card(
+                              child: ListTile(
+                                leading: isOwner ? const CircleAvatar(child: Icon(Icons.person, size: 16)) : null,
+                                title: Text((it['name'] as String?) ?? 'Unnamed'),
+                                subtitle: Text('By: ${it['user_name'] ?? (isOwner ? 'You' : 'Other')}${expiry != null ? ' • Exp: ${DateFormat.yMMMd().format(expiry)}' : ''}'),
+                                trailing: PopupMenuButton<String>(
+                                  onSelected: (v) async {
+                                    if (v == 'delete') await _deleteItem(it['id'] as String);
+                                    if (v == 'donate') Navigator.of(context).pushNamed(DonationPage.route, arguments: {'id': it['id'], 'name': it['name']});
+                                    if (v == 'waste') Navigator.of(context).pushNamed(WasteLogPage.route, arguments: {'id': it['id'], 'name': it['name']});
+                                    await _loadAll();
+                                    setState(() {});
+                                  },
+                                  itemBuilder: (_) => [
+                                    const PopupMenuItem(value: 'donate', child: Text('Offer Donation')),
+                                    const PopupMenuItem(value: 'waste', child: Text('Log Waste')),
+                                    if (canEdit) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                if (_requests.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Join Requests', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Column(
+                    children: _requests.map((r) {
+                      return Card(
+                        child: ListTile(
+                          title: Text(r['requester_name'] ?? 'Unknown'),
+                          subtitle: Text(r['message'] ?? ''),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => _approveRequest(r['id'] as String)),
+                              IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => _rejectRequest(r['id'] as String)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// small helper badge widget (kept for backward compatibility)
+class Badge extends StatelessWidget {
+  final Widget child;
+  const Badge({required this.child, Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(radius: 16, backgroundColor: Colors.green[100], child: child);
+  }
+}
