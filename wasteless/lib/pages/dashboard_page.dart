@@ -1,5 +1,6 @@
 // lib/pages/dashboard_page.dart
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import '../services/supabase_service.dart';
 import 'package:intl/intl.dart';
 import '../widgets/common.dart';
@@ -215,9 +216,15 @@ class DashboardPageState extends State<DashboardPage> {
 
           // Bottom announcements bar (placeholder content for now)
           SizedBox(
-            height: 32,
-            child: ClipRect(child: _Marquee(messages: announcements)),
-          ),
+  height: 32,
+  child: SafeArea(
+    // allow only bottom safe padding so it won't overlap system nav
+    top: false,
+    bottom: true,
+    child: _Marquee(messages: announcements),
+  ),
+),
+
         ],
       ),
     );
@@ -501,22 +508,17 @@ class _Marquee extends StatefulWidget {
   State<_Marquee> createState() => _MarqueeState();
 }
 
-class _MarqueeState extends State<_Marquee>
-    with SingleTickerProviderStateMixin {
+class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _anim;
+  static const double _gap = 48.0; // gap between repeated texts
+  static const double _speedPxPerSecond = 70.0; // adjust for faster/slower
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 12),
-    )..repeat();
-    _anim = Tween<double>(
-      begin: 1,
-      end: -1,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+    // initial duration will be updated in build if needed
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12));
+    _controller.repeat();
   }
 
   @override
@@ -528,22 +530,79 @@ class _MarqueeState extends State<_Marquee>
   @override
   Widget build(BuildContext context) {
     final text = widget.messages.join('     •     ');
-    return Container(
-      color: Colors.green[800],
-      child: AnimatedBuilder(
-        animation: _anim,
-        builder: (_, __) {
-          return FractionalTranslation(
-            translation: Offset(_anim.value, 0),
-            child: Row(
-              children: [
-                const SizedBox(width: 16),
-                Text(text, style: const TextStyle(color: Colors.white)),
-              ],
+
+    return LayoutBuilder(builder: (context, constraints) {
+      final maxWidth = constraints.maxWidth;
+
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: const TextStyle(color: Colors.white)),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      final textWidth = tp.width;
+      
+
+      // if text fits, no animation needed
+      if (textWidth <= maxWidth - 24) {
+        if (_controller.isAnimating) _controller.stop();
+        return Container(
+          color: Colors.green[800],
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(text, style: const TextStyle(color: Colors.white)),
+        );
+      }
+
+      // text wider than viewport -> animate
+      final totalDistance = textWidth + _gap;
+      final durationSeconds = (totalDistance / _speedPxPerSecond).clamp(6.0, 40.0);
+      _controller.duration = Duration(milliseconds: (durationSeconds * 1000).toInt());
+      if (!_controller.isAnimating) _controller.repeat();
+
+      return Container(
+        color: Colors.green[800],
+        child: ClipRect(
+          child: SizedBox(
+            width: maxWidth,
+            height: 32,
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) {
+                final dx = -_controller.value * totalDistance;
+                return Stack(
+                  children: [
+                    // First text instance
+                    Positioned(
+                      left: dx + 12,
+                      top: 0,
+                      bottom: 0,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          text,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    // Second text instance (for seamless loop)
+                    Positioned(
+                      left: dx + textWidth + _gap + 12,
+                      top: 0,
+                      bottom: 0,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          text,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-          );
-        },
-      ),
-    );
+          ),
+        ),
+      );
+    });
   }
 }
