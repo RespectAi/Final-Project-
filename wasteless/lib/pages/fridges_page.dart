@@ -5,6 +5,7 @@ import '../services/supabase_service.dart';
 import '../widgets/common.dart';
 import 'donation_page.dart';
 import 'waste_log_page.dart';
+import 'package:flutter/services.dart';
 
 class FridgesPage extends StatefulWidget {
   static const route = '/fridges';
@@ -188,6 +189,7 @@ class _FridgeDetailPageState extends State<FridgeDetailPage> {
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _requests = [];
+  String? _generatedCode;
 
   @override
   void initState() {
@@ -206,10 +208,21 @@ class _FridgeDetailPageState extends State<FridgeDetailPage> {
   }
 
   Future<void> _regenerateCode() async {
-    final id = widget.fridge['id'] as String;
-    final code = await widget.supa.regenerateFridgeCode(id);
-    if (code != null) showCornerToast(context, message: 'New code: $code', alignment: Alignment.topCenter);
+  final id = widget.fridge['id'] as String;
+  final code = await widget.supa.regenerateFridgeCode(id);
+  if (code != null) {
+    setState(() {
+      _generatedCode = code;
+    });
+  } else {
+    showCornerToast(context, message: 'Failed to generate code');
   }
+}
+
+void _copyCodeToClipboard(String code) async {
+  await Clipboard.setData(ClipboardData(text: code));
+  showCornerToast(context, message: 'Code copied to clipboard');
+}
 
   Future<void> _approveRequest(String reqId) async {
     await widget.supa.approveJoinRequest(reqId);
@@ -250,9 +263,50 @@ class _FridgeDetailPageState extends State<FridgeDetailPage> {
                 Row(
                   children: [
                     Expanded(child: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-                    TextButton.icon(onPressed: _regenerateCode, icon: const Icon(Icons.refresh), label: const Text('Regenerate Code')),
-                  ],
-                ),
+                    if (widget.supa.isAdminMode)
+                       TextButton.icon(onPressed: _regenerateCode, icon: const Icon(Icons.refresh), label: const Text('Regenerate Code')),
+                        ],
+                  ),
+                     if (_generatedCode != null) ...[
+                         const SizedBox(height: 12),
+                          Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                  color: Colors.green[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.green[200]!),
+                               ),
+                              child: Row(
+                                 children: [
+                                       const Icon(Icons.key, color: Colors.green, size: 20),
+                                      const SizedBox(width: 8),
+                                      const Text('Fridge Code: ', style: TextStyle(fontWeight: FontWeight.w600)),
+                                      Expanded(
+                                        child: SelectableText(
+                                           _generatedCode!,
+                                        style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          onPressed: () => _copyCodeToClipboard(_generatedCode!),
+          icon: const Icon(Icons.copy, size: 20),
+          tooltip: 'Copy code',
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.green[100],
+            foregroundColor: Colors.green[700],
+            padding: const EdgeInsets.all(8),
+            minimumSize: const Size(36, 36),
+          ),
+        ),
+      ],
+    ),
+  ),
+],
                 const SizedBox(height: 12),
                 const Text('Members', style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),

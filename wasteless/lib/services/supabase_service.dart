@@ -36,13 +36,21 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     ''')
         .eq('user_id', uid)
         .order('expiry_date', ascending: true);
-    return List<Map<String, dynamic>>.from(data);
+    try {
+      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Fetch the full list of (pre‐seeded) categories
   Future<List<Map<String, dynamic>>> fetchCategories() async {
     final data = await client.from('categories').select('id, name, icon_url, default_expiry_days').order('name');
-    return List<Map<String, dynamic>>.from(data);
+    try {
+      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Fetch only this user’s waste logs (prefer denormalized item_name, fallback to join)
@@ -53,7 +61,11 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
         .select('id, item_id, quantity, reason, item_name, logged_at, inventory_items(name)')
         .eq('user_id', uid)
         .order('logged_at', ascending: false);
-    return List<Map<String, dynamic>>.from(data);
+    try {
+      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> addItem({
@@ -185,7 +197,11 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
         .select('id, item_id, item_name, recipient_info, offered_at, inventory_items(name)')
         .eq('user_id', uid)
         .order('offered_at', ascending: false);
-    return List<Map<String, dynamic>>.from(data);
+    try {
+      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   // Delete an inventory item by its id
@@ -219,7 +235,11 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
         .eq('user_id', uid)
         .eq('inventory_item_categories.category_id', categoryId)
         .order('expiry_date', ascending: true);
-    return List<Map<String, dynamic>>.from(data);
+    try {
+      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   // User Management Methods
@@ -408,7 +428,29 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     try {
       final uid = client.auth.currentUser!.id;
       final data = await client.rpc('fetch_fridges_for_user', params: {'p_user': uid});
-      return List<Map<String, dynamic>>.from(data ?? []);
+
+      // RPC may return a List<dynamic> or a Map depending on Postgres function; normalize it
+      List<Map<String, dynamic>> list = [];
+      if (data is List) {
+        list = data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } else if (data is Map) {
+        // sometimes rpc returns a single object
+        list = [Map<String, dynamic>.from(data)];
+      }
+
+      if (list.isNotEmpty) return list;
+
+      // Fallback: return fridges owned by the user (covers newly created fridges)
+      final owned = await client
+          .from('fridges')
+          .select('id, name, location, created_at')
+          .eq('user_id', uid)
+          .order('created_at', ascending: false);
+      try {
+        return (owned as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } catch (_) {
+        return [];
+      }
     } catch (e) {
       debugPrint('Error fetching connected fridges: $e');
       // Fallback: return my fridges
@@ -424,7 +466,11 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           .select('id, name, expiry_date, quantity, user_id, created_at')
           .eq('fridge_id', fridgeId)
           .order('expiry_date', ascending: true);
-      return List<Map<String, dynamic>>.from(data ?? []);
+      try {
+        return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } catch (_) {
+        return [];
+      }
     } catch (e) {
       debugPrint('Error fetching fridge items: $e');
       return [];
@@ -439,7 +485,9 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           .select('id, user_id, role, joined_at, profiles!fridge_users_user_id_fkey(full_name)')
           .eq('fridge_id', fridgeId)
           .order('joined_at', ascending: true);
-      return List<Map<String, dynamic>>.from(data ?? []).map((m) {
+      try {
+        final list = (data as List).map((entry) {
+          final m = Map<String, dynamic>.from(entry as Map);
         return {
           'id': m['id'],
           'user_id': m['user_id'],
@@ -447,7 +495,11 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           'joined_at': m['joined_at'],
           'user_name': m['profiles']?['full_name'] ?? 'Unknown',
         };
-      }).toList();
+        }).toList();
+        return list;
+      } catch (_) {
+        return [];
+      }
     } catch (e) {
       debugPrint('Error fetching fridge members: $e');
       return [];
@@ -463,16 +515,22 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           .eq('fridge_id', fridgeId)
           .eq('status', 'pending')
           .order('created_at', ascending: false);
-      return List<Map<String, dynamic>>.from(data ?? []).map((r) {
-        return {
-          'id': r['id'],
-          'requester_id': r['requester_id'],
-          'status': r['status'],
-          'message': r['message'],
-          'created_at': r['created_at'],
-          'requester_name': r['profiles']?['full_name'] ?? 'Unknown',
-        };
-      }).toList();
+      try {
+        final list = (data as List).map((entry) {
+          final r = Map<String, dynamic>.from(entry as Map);
+          return {
+            'id': r['id'],
+            'requester_id': r['requester_id'],
+            'status': r['status'],
+            'message': r['message'],
+            'created_at': r['created_at'],
+            'requester_name': r['profiles']?['full_name'] ?? 'Unknown',
+          };
+        }).toList();
+        return list;
+      } catch (_) {
+        return [];
+      }
     } catch (e) {
       debugPrint('Error fetching fridge requests: $e');
       return [];
@@ -482,8 +540,11 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
   /// Regenerate fridge code via RPC
   Future<String?> regenerateFridgeCode(String fridgeId) async {
     try {
-      final res = await client.rpc('regenerate_fridge_code', params: {'p_fridge': fridgeId});
-      return res as String?;
+  final res = await client.rpc('regenerate_fridge_code', params: {'p_fridge': fridgeId});
+  if (res == null) return null;
+  if (res is String) return res;
+  if (res is Map && res.containsKey('code')) return (res['code'] ?? '').toString();
+  return res.toString();
     } catch (e) {
       debugPrint('Error regenerating fridge code: $e');
       return null;
@@ -504,7 +565,13 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
         if (name != null) 'name': name,
         if (location != null) 'location': location,
       }).select('id').single();
-      final id = res['id'] as String?;
+      // id may be returned as int or string depending on DB setup; normalize to String
+      String? id;
+      try {
+        id = (res['id']).toString();
+      } catch (_) {
+        id = null;
+      }
       // add owner as fridge_user
       if (id != null) {
         try {
@@ -512,6 +579,7 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
         } catch (_) {
           // ignore duplicate membership
         }
+        debugPrint('Created fridge id=$id for user=$uid');
       }
       return id;
     } catch (e) {
