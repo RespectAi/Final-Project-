@@ -20,6 +20,70 @@ class _FridgesPageState extends State<FridgesPage> {
   late Future<List<Map<String, dynamic>>> _fridgesFuture;
   final TextEditingController _joinCtrl = TextEditingController();
   final DateFormat _dateFmt = DateFormat.yMMMd().add_jm();
+  final Set<String> _selectedFridgeIds = {};
+  final Map<String, Map<String, dynamic>> _selectedFridges = {};
+  
+  void _toggleSelection(String fridgeId, Map<String, dynamic> fridge) {
+  if (!widget.supa.isAdminMode) return; // Only admins can select for deletion
+  
+  setState(() {
+    if (_selectedFridgeIds.contains(fridgeId)) {
+      _selectedFridgeIds.remove(fridgeId);
+      _selectedFridges.remove(fridgeId);
+    } else {
+      _selectedFridgeIds.add(fridgeId);
+      _selectedFridges[fridgeId] = fridge;
+    }
+  });
+}
+
+void _clearSelection() {
+  setState(() {
+    _selectedFridgeIds.clear();
+    _selectedFridges.clear();
+  });
+}
+
+Future<void> _confirmAndPerformBulkDelete() async {
+  if (_selectedFridgeIds.isEmpty) return;
+  
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Delete Selected Fridges'),
+      content: Text('Are you sure you want to delete ${_selectedFridgeIds.length} fridge(s)? This action cannot be undone and will remove all items and members.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          child: const Text('Delete All'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed == true) {
+    int successCount = 0;
+    for (final fridgeId in List<String>.from(_selectedFridgeIds)) {
+      final success = await widget.supa.deleteFridge(fridgeId);
+      if (success) successCount++;
+    }
+    
+    showCornerToast(
+      context, 
+      message: successCount == _selectedFridgeIds.length 
+        ? 'All fridges deleted successfully'
+        : '$successCount/${_selectedFridgeIds.length} fridges deleted'
+    );
+    
+    _clearSelection();
+    _refresh();
+  }
+}
 
   @override
   void initState() {
@@ -119,57 +183,107 @@ class _FridgesPageState extends State<FridgesPage> {
               );
             }
 
-            return ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: fridges.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (ctx, i) {
-                if (i == fridges.length) {
-                  // join-by-code footer
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: Row(
-                      children: [
-                        Expanded(child: TextField(controller: _joinCtrl, decoration: const InputDecoration(hintText: 'Enter fridge code to join'))),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-  onPressed: () async {
-    final code = _joinCtrl.text.trim();
-    if (code.isEmpty) return;
-    final result = await widget.supa.joinFridgeWithCode(code);
-    if (result['success'] == true) {
-      final fridgeName = result['fridgeName'] ?? 'Unknown Fridge';
-      showCornerToast(context, message: 'Joined $fridgeName');
-      _joinCtrl.clear();
-      _refresh();
-    } else {
-      showCornerToast(context, message: result['message'] ?? 'Failed to join');
-    }
-  },
-  child: const Text('Join'),
-),
-                      ],
-                    ),
-                  );
-                }
+            return Stack(
+  children: [
+    ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: fridges.length + 1,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (ctx, i) {
+        if (i == fridges.length) {
+          // join-by-code footer
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Row(
+              children: [
+                Expanded(child: TextField(controller: _joinCtrl, decoration: const InputDecoration(hintText: 'Enter fridge code to join'))),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () async {
+                    final code = _joinCtrl.text.trim();
+                    if (code.isEmpty) return;
+                    final result = await widget.supa.joinFridgeWithCode(code);
+                    if (result['success'] == true) {
+                      final fridgeName = result['fridgeName'] ?? 'Unknown Fridge';
+                      showCornerToast(context, message: 'Joined $fridgeName');
+                      _joinCtrl.clear();
+                      _refresh();
+                    } else {
+                      showCornerToast(context, message: result['message'] ?? 'Failed to join');
+                    }
+                  },
+                  child: const Text('Join'),
+                ),
+              ],
+            ),
+          );
+        }
 
-                final f = fridges[i];
-                final created = f['created_at'] != null ? DateTime.tryParse(f['created_at'].toString()) : null;
-                return Card(
-                  child: ListTile(
-                    title: Text((f['name'] as String?) ?? 'Fridge', style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: created != null ? Text('Created: ${_dateFmt.format(created.toLocal())}') : null,
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      final changed = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(builder: (_) => FridgeDetailPage(supa: widget.supa, fridge: f)),
-                      );
-                      if (changed == true) _refresh();
-                    },
-                  ),
-                );
-              },
-            );
+        final f = fridges[i];
+        final fridgeId = f['id']?.toString() ?? '';
+        final isSelected = _selectedFridgeIds.contains(fridgeId);
+        final created = f['created_at'] != null ? DateTime.tryParse(f['created_at'].toString()) : null;
+        
+        return Card(
+          color: isSelected ? Colors.blue.shade50 : null,
+          child: ListTile(
+            leading: isSelected 
+              ? const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Icon(Icons.check, color: Colors.white, size: 18),
+                )
+              : null,
+            title: Text((f['name'] as String?) ?? 'Fridge', style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: created != null ? Text('Created: ${_dateFmt.format(created.toLocal())}') : null,
+            trailing: _selectedFridgeIds.isEmpty ? const Icon(Icons.chevron_right) : null,
+            onTap: () async {
+              if (_selectedFridgeIds.isNotEmpty) {
+                _toggleSelection(fridgeId, f);
+                return;
+              }
+              final changed = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(builder: (_) => FridgeDetailPage(supa: widget.supa, fridge: f)),
+              );
+              if (changed == true) _refresh();
+            },
+            onLongPress: () => _toggleSelection(fridgeId, f),
+          ),
+        );
+      },
+    ),
+    
+    // Bottom action bar for bulk selection
+    if (_selectedFridgeIds.isNotEmpty && widget.supa.isAdminMode)
+      Positioned(
+        left: 12,
+        right: 12,
+        bottom: 12,
+        child: Card(
+          elevation: 6,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            child: Row(
+              children: [
+                Text('${_selectedFridgeIds.length} selected', style: const TextStyle(fontWeight: FontWeight.w600)),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Delete selected fridges',
+                  onPressed: _confirmAndPerformBulkDelete,
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                ),
+                IconButton(
+                  tooltip: 'Cancel selection',
+                  onPressed: _clearSelection,
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+  ],
+);
           },
         ),
       ),

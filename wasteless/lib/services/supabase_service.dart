@@ -384,79 +384,113 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     }).toList();
   }
 
-  /// Fetch fridges the current user has access to
-  Future<List<Map<String, dynamic>>> fetchMyFridges() async {
-    try {
-      final uid = client.auth.currentUser!.id;
-      
-      final data = await client
-          .from('fridge_users')
-          .select('''
-            fridge_id,
-            role,
-            joined_at,
-            fridges!fridge_users_fridge_id_fkey(
-              id,
-              name,
-              location,
-              created_at
-            )
-          ''')
-          .eq('user_id', uid)
-          .order('joined_at', ascending: false);
-      
-      // Transform the data to flatten the nested objects
-      return List<Map<String, dynamic>>.from(data).map((item) {
-        final fridge = item['fridges'];
-        return {
+    /// Fetch fridges the current user has access to
+Future<List<Map<String, dynamic>>> fetchMyFridges() async {
+  try {
+    final uid = client.auth.currentUser!.id;
+    
+    final data = await client
+        .from('fridge_users')
+        .select('''
+          fridge_id,
+          role,
+          joined_at,
+          fridges!fridge_users_fridge_id_fkey(
+            id,
+            name,
+            location,
+            created_at
+          )
+        ''')
+        .eq('user_id', uid)
+        .order('joined_at', ascending: false);
+    
+    // Transform the data to flatten the nested objects
+    return List<Map<String, dynamic>>.from(data).map((item) {
+      final fridge = item['fridges'];
+      if (fridge == null) return null; // Skip if fridge was deleted
+      return {
+        'id': fridge['id'],
+        'name': fridge['name'],
+        'location': fridge['location'],
+        'created_at': fridge['created_at'],
+        'role': item['role'],
+        'joined_at': item['joined_at'],
+      };
+    }).where((item) => item != null).cast<Map<String, dynamic>>().toList();
+  } catch (e) {
+    debugPrint('Error fetching my fridges: $e');
+    return [];
+  }
+}
+
+  /// Fetch fridges connected to the current user (via membership or items)
+  /// Fetch fridges connected to the current user (via membership or items)
+Future<List<Map<String, dynamic>>> fetchConnectedFridges() async {
+  try {
+    final uid = client.auth.currentUser!.id;
+    
+    // Get fridges where user is a member
+    final memberFridges = await client
+        .from('fridge_users')
+        .select('''
+          fridge_id,
+          role,
+          joined_at,
+          fridges!fridge_users_fridge_id_fkey(
+            id,
+            name,
+            location,
+            created_at
+          )
+        ''')
+        .eq('user_id', uid)
+        .order('joined_at', ascending: false);
+    
+    // Transform the data
+    final result = <Map<String, dynamic>>[];
+    for (final item in memberFridges) {
+      final fridge = item['fridges'];
+      if (fridge != null) {
+        result.add({
           'id': fridge['id'],
           'name': fridge['name'],
           'location': fridge['location'],
           'created_at': fridge['created_at'],
           'role': item['role'],
           'joined_at': item['joined_at'],
-        };
-      }).toList();
-    } catch (e) {
-      debugPrint('Error fetching my fridges: $e');
-      return [];
-    }
-  }
-
-  /// Fetch fridges connected to the current user (via membership or items)
-  Future<List<Map<String, dynamic>>> fetchConnectedFridges() async {
-    try {
-      final uid = client.auth.currentUser!.id;
-      final data = await client.rpc('fetch_fridges_for_user', params: {'p_user': uid});
-
-      // RPC may return a List<dynamic> or a Map depending on Postgres function; normalize it
-      List<Map<String, dynamic>> list = [];
-      if (data is List) {
-        list = data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      } else if (data is Map) {
-        // sometimes rpc returns a single object
-        list = [Map<String, dynamic>.from(data)];
+        });
       }
-
-      if (list.isNotEmpty) return list;
-
-      // Fallback: return fridges owned by the user (covers newly created fridges)
-      final owned = await client
-          .from('fridges')
-          .select('id, name, location, created_at')
-          .eq('user_id', uid)
-          .order('created_at', ascending: false);
-      try {
-        return (owned as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      } catch (_) {
-        return [];
-      }
-    } catch (e) {
-      debugPrint('Error fetching connected fridges: $e');
-      // Fallback: return my fridges
-      return fetchMyFridges();
     }
+    
+    // Also get fridges owned by the user (in case they're not in fridge_users yet)
+    final ownedFridges = await client
+        .from('fridges')
+        .select('id, name, location, created_at')
+        .eq('user_id', uid)
+        .order('created_at', ascending: false);
+    
+    // Add owned fridges that aren't already in the list
+    for (final fridge in ownedFridges) {
+      final fridgeId = fridge['id'];
+      if (!result.any((f) => f['id'] == fridgeId)) {
+        result.add({
+          'id': fridge['id'],
+          'name': fridge['name'],
+          'location': fridge['location'],
+          'created_at': fridge['created_at'],
+          'role': 'admin', // Owner is always admin
+          'joined_at': fridge['created_at'],
+        });
+      }
+    }
+    
+    return result;
+  } catch (e) {
+    debugPrint('Error fetching connected fridges: $e');
+    return [];
   }
+}
 
   /// Fetch items in a given fridge
   Future<List<Map<String, dynamic>>> fetchFridgeItems(String fridgeId) async {
@@ -537,19 +571,38 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     }
   }
 
-  /// Regenerate fridge code via RPC
-  Future<String?> regenerateFridgeCode(String fridgeId) async {
+/// Regenerate fridge code via RPC or direct update
+Future<String?> regenerateFridgeCode(String fridgeId) async {
+  try {
+    // Try RPC first if it exists
     try {
-  final res = await client.rpc('regenerate_fridge_code', params: {'p_fridge': fridgeId});
-  if (res == null) return null;
-  if (res is String) return res;
-  if (res is Map && res.containsKey('code')) return (res['code'] ?? '').toString();
-  return res.toString();
-    } catch (e) {
-      debugPrint('Error regenerating fridge code: $e');
-      return null;
+      final res = await client.rpc('regenerate_fridge_code', params: {'p_fridge': fridgeId});
+      if (res != null) {
+        if (res is String) return res;
+        if (res is Map && res.containsKey('code')) return res['code']?.toString();
+        return res.toString();
+      }
+    } catch (rpcError) {
+      debugPrint('RPC not available, generating code locally: $rpcError');
     }
+    
+    // Fallback: generate a unique code locally
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final code = '${fridgeId.substring(0, 3).toUpperCase()}${timestamp.toString().substring(7, 13)}';
+    
+    // Update the fridge with the new code
+    await client
+        .from('fridges')
+        .update({'code': code})
+        .eq('id', fridgeId);
+    
+    debugPrint('Generated fridge code: $code for fridge: $fridgeId');
+    return code;
+  } catch (e) {
+    debugPrint('Error regenerating fridge code: $e');
+    return null;
   }
+}
 
   /// Helper to return current authenticated user's id
   String? getCurrentUserId() {
@@ -599,15 +652,16 @@ Future<bool> deleteFridge(String fridgeId) async {
         .select('role')
         .eq('user_id', uid)
         .eq('fridge_id', fridgeId)
-        .eq('role', 'admin')
         .maybeSingle();
     
-    if (membership == null) {
+    if (membership == null || membership['role'] != 'admin') {
+      debugPrint('User is not admin of fridge $fridgeId');
       return false; // User is not admin
     }
     
     // Delete the fridge (cascade should handle related records)
     await client.from('fridges').delete().eq('id', fridgeId);
+    debugPrint('Successfully deleted fridge $fridgeId');
     return true;
   } catch (e) {
     debugPrint('Error deleting fridge: $e');
@@ -616,48 +670,91 @@ Future<bool> deleteFridge(String fridgeId) async {
 }
 
   /// Join a fridge immediately using code (RPC already created)
+/// Join a fridge immediately using code (RPC already created)
+/// Join a fridge immediately using code
 Future<Map<String, dynamic>> joinFridgeWithCode(String code) async {
   try {
-    final res = await client.rpc('join_fridge_with_code', params: {'p_code': code});
+    final uid = client.auth.currentUser!.id;
     
-    if (res == null) {
-      return {'success': false, 'message': 'Invalid code'};
-    }
+    debugPrint('Attempting to join fridge with code: $code');
     
-    // Handle different response formats
-    if (res is Map) {
-      if (res['status'] == 'ok') {
-        // Get fridge name if available
-        final fridgeId = res['fridge_id'];
-        String fridgeName = 'Unknown Fridge';
-        
-        if (fridgeId != null) {
-          try {
-            final fridgeData = await client
-                .from('fridges')
-                .select('name')
-                .eq('id', fridgeId)
-                .single();
-            fridgeName = fridgeData['name'] ?? 'Unknown Fridge';
-          } catch (_) {
-            // Ignore if we can't get the name
+    // First try RPC if available
+    try {
+      final res = await client.rpc('join_fridge_with_code', params: {'p_code': code});
+      
+      if (res != null) {
+        if (res is Map) {
+          if (res['status'] == 'ok') {
+            final fridgeId = res['fridge_id'];
+            String fridgeName = 'Unknown Fridge';
+            
+            if (fridgeId != null) {
+              try {
+                final fridgeData = await client
+                    .from('fridges')
+                    .select('name')
+                    .eq('id', fridgeId)
+                    .single();
+                fridgeName = fridgeData['name'] ?? 'Unknown Fridge';
+              } catch (_) {}
+            }
+            
+            return {'success': true, 'fridgeName': fridgeName};
+          } else {
+            return {'success': false, 'message': res['message'] ?? 'Failed to join fridge'};
           }
         }
-        
-        return {'success': true, 'fridgeName': fridgeName};
-      } else {
-        return {'success': false, 'message': res['message'] ?? 'Failed to join fridge'};
       }
+    } catch (rpcError) {
+      debugPrint('RPC not available, using direct join: $rpcError');
     }
     
-    if (res is String && res.isNotEmpty) {
-      return {'success': true, 'fridgeName': 'Fridge'};
+    // Fallback: Direct database operations
+    // Find the fridge with this code
+    final fridgeResult = await client
+        .from('fridges')
+        .select('id, name')
+        .eq('code', code)
+        .maybeSingle();
+    
+    if (fridgeResult == null) {
+      debugPrint('No fridge found with code: $code');
+      return {'success': false, 'message': 'Invalid fridge code'};
     }
     
-    return {'success': true, 'fridgeName': 'Fridge'};
+    final fridgeId = fridgeResult['id']?.toString();
+    final fridgeName = fridgeResult['name'] ?? 'Unknown Fridge';
+    
+    if (fridgeId == null) {
+      return {'success': false, 'message': 'Invalid fridge data'};
+    }
+    
+    // Check if user is already a member
+    final existingMembership = await client
+        .from('fridge_users')
+        .select('id')
+        .eq('user_id', uid)
+        .eq('fridge_id', fridgeId)
+        .maybeSingle();
+    
+    if (existingMembership != null) {
+      debugPrint('User already member of fridge: $fridgeId');
+      return {'success': false, 'message': 'Already a member of this fridge'};
+    }
+    
+    // Add user to fridge_users table
+    await client.from('fridge_users').insert({
+      'user_id': uid,
+      'fridge_id': fridgeId,
+      'role': 'user',
+      'joined_at': DateTime.now().toIso8601String(),
+    });
+    
+    debugPrint('Successfully joined fridge: $fridgeName (ID: $fridgeId)');
+    return {'success': true, 'fridgeName': fridgeName};
   } catch (e) {
     debugPrint('Error joining fridge by code: $e');
-    return {'success': false, 'message': 'Network error occurred'};
+    return {'success': false, 'message': 'Error: ${e.toString()}'};
   }
 }
 
