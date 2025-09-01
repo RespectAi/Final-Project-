@@ -165,14 +165,17 @@ Future<void> _confirmAndPerformBulkDelete() async {
     final code = _joinCtrl.text.trim();
     if (code.isEmpty) return;
     final result = await widget.supa.joinFridgeWithCode(code);
-    if (result['success'] == true) {
-      final fridgeName = result['fridgeName'] ?? 'Unknown Fridge';
-      showCornerToast(context, message: 'Joined $fridgeName');
-      _joinCtrl.clear();
-      _refresh();
-    } else {
-      showCornerToast(context, message: result['message'] ?? 'Failed to join');
-    }
+if (result['success'] == true) {
+  final fridgeName = result['fridgeName'] ?? 'Unknown Fridge';
+  final already = result['alreadyMember'] == true;
+  showCornerToast(context, message: already ? 'Already member of $fridgeName' : 'Joined $fridgeName');
+  _joinCtrl.clear();
+  await _refresh(); // ensure UI waits for the fresh list
+  setState(() {});
+} else {
+  showCornerToast(context, message: result['message'] ?? 'Failed to join');
+}
+
   },
   child: const Text('Join'),
 ),
