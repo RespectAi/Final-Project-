@@ -588,20 +588,78 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     }
   }
 
-  /// Join a fridge immediately using code (RPC already created)
-  Future<bool> joinFridgeWithCode(String code) async {
-    try {
-      final res = await client.rpc('join_fridge_with_code', params: {'p_code': code});
-      if (res == null) return false;
-      // RPC returns JSON-like; success if status == 'ok'
-      if (res is Map && res['status'] == 'ok') return true;
-      if (res is String) return res.isNotEmpty;
-      return true;
-    } catch (e) {
-      debugPrint('Error joining fridge by code: $e');
-      return false;
+  /// Delete a fridge (admin only)
+Future<bool> deleteFridge(String fridgeId) async {
+  try {
+    final uid = client.auth.currentUser!.id;
+    
+    // Check if user is admin of this fridge
+    final membership = await client
+        .from('fridge_users')
+        .select('role')
+        .eq('user_id', uid)
+        .eq('fridge_id', fridgeId)
+        .eq('role', 'admin')
+        .maybeSingle();
+    
+    if (membership == null) {
+      return false; // User is not admin
     }
+    
+    // Delete the fridge (cascade should handle related records)
+    await client.from('fridges').delete().eq('id', fridgeId);
+    return true;
+  } catch (e) {
+    debugPrint('Error deleting fridge: $e');
+    return false;
   }
+}
+
+  /// Join a fridge immediately using code (RPC already created)
+Future<Map<String, dynamic>> joinFridgeWithCode(String code) async {
+  try {
+    final res = await client.rpc('join_fridge_with_code', params: {'p_code': code});
+    
+    if (res == null) {
+      return {'success': false, 'message': 'Invalid code'};
+    }
+    
+    // Handle different response formats
+    if (res is Map) {
+      if (res['status'] == 'ok') {
+        // Get fridge name if available
+        final fridgeId = res['fridge_id'];
+        String fridgeName = 'Unknown Fridge';
+        
+        if (fridgeId != null) {
+          try {
+            final fridgeData = await client
+                .from('fridges')
+                .select('name')
+                .eq('id', fridgeId)
+                .single();
+            fridgeName = fridgeData['name'] ?? 'Unknown Fridge';
+          } catch (_) {
+            // Ignore if we can't get the name
+          }
+        }
+        
+        return {'success': true, 'fridgeName': fridgeName};
+      } else {
+        return {'success': false, 'message': res['message'] ?? 'Failed to join fridge'};
+      }
+    }
+    
+    if (res is String && res.isNotEmpty) {
+      return {'success': true, 'fridgeName': 'Fridge'};
+    }
+    
+    return {'success': true, 'fridgeName': 'Fridge'};
+  } catch (e) {
+    debugPrint('Error joining fridge by code: $e');
+    return {'success': false, 'message': 'Network error occurred'};
+  }
+}
 
   /// Request to join a fridge (creates fridge_requests row)
   Future<bool> requestToJoinFridge(String fridgeId, String message) async {

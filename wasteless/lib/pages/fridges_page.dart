@@ -97,20 +97,21 @@ class _FridgesPageState extends State<FridgesPage> {
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton(
-                          onPressed: () async {
-                            final code = _joinCtrl.text.trim();
-                            if (code.isEmpty) return;
-                            final ok = await widget.supa.joinFridgeWithCode(code);
-                            if (ok) {
-                              showCornerToast(context, message: 'Joined fridge');
-                              _joinCtrl.clear();
-                              _refresh();
-                            } else {
-                              showCornerToast(context, message: 'Failed to join');
-                            }
-                          },
-                          child: const Text('Join'),
-                        ),
+  onPressed: () async {
+    final code = _joinCtrl.text.trim();
+    if (code.isEmpty) return;
+    final result = await widget.supa.joinFridgeWithCode(code);
+    if (result['success'] == true) {
+      final fridgeName = result['fridgeName'] ?? 'Unknown Fridge';
+      showCornerToast(context, message: 'Joined $fridgeName');
+      _joinCtrl.clear();
+      _refresh();
+    } else {
+      showCornerToast(context, message: result['message'] ?? 'Failed to join');
+    }
+  },
+  child: const Text('Join'),
+),
                       ],
                     ),
                   ),
@@ -132,20 +133,21 @@ class _FridgesPageState extends State<FridgesPage> {
                         Expanded(child: TextField(controller: _joinCtrl, decoration: const InputDecoration(hintText: 'Enter fridge code to join'))),
                         const SizedBox(width: 8),
                         ElevatedButton(
-                          onPressed: () async {
-                            final code = _joinCtrl.text.trim();
-                            if (code.isEmpty) return;
-                            final ok = await widget.supa.joinFridgeWithCode(code);
-                            if (ok) {
-                              showCornerToast(context, message: 'Joined fridge');
-                              _joinCtrl.clear();
-                              _refresh();
-                            } else {
-                              showCornerToast(context, message: 'Failed to join');
-                            }
-                          },
-                          child: const Text('Join'),
-                        ),
+  onPressed: () async {
+    final code = _joinCtrl.text.trim();
+    if (code.isEmpty) return;
+    final result = await widget.supa.joinFridgeWithCode(code);
+    if (result['success'] == true) {
+      final fridgeName = result['fridgeName'] ?? 'Unknown Fridge';
+      showCornerToast(context, message: 'Joined $fridgeName');
+      _joinCtrl.clear();
+      _refresh();
+    } else {
+      showCornerToast(context, message: result['message'] ?? 'Failed to join');
+    }
+  },
+  child: const Text('Join'),
+),
                       ],
                     ),
                   );
@@ -189,6 +191,38 @@ class _FridgeDetailPageState extends State<FridgeDetailPage> {
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _requests = [];
+  Future<void> _handleFridgeAction(String action) async {
+  if (action == 'delete') {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Fridge'),
+        content: Text('Are you sure you want to delete "${widget.fridge['name'] ?? 'this fridge'}"? This action cannot be undone and will remove all items and members.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final success = await widget.supa.deleteFridge(widget.fridge['id'] as String);
+      if (success) {
+        showCornerToast(context, message: 'Fridge deleted successfully');
+        Navigator.pop(context, true); // Return to fridges list
+      } else {
+        showCornerToast(context, message: 'Failed to delete fridge');
+      }
+    }
+  }
+}
   String? _generatedCode;
 
   @override
@@ -248,7 +282,18 @@ void _copyCodeToClipboard(String code) async {
     final currentUserId = widget.supa.getCurrentUserId();
 
     return Scaffold(
-      appBar: AppBar(title: Text(name)),
+      appBar: AppBar(
+  title: Text(name),
+  actions: [
+    if (widget.supa.isAdminMode)
+      PopupMenuButton<String>(
+        onSelected: (value) => _handleFridgeAction(value),
+        itemBuilder: (context) => const [
+          PopupMenuItem(value: 'delete', child: Text('Delete Fridge')),
+        ],
+      ),
+  ],
+),
       body: FutureBuilder<void>(
         future: _loadFuture,
         builder: (ctx, snap) {
@@ -407,3 +452,4 @@ class Badge extends StatelessWidget {
     return CircleAvatar(radius: 16, backgroundColor: Colors.green[100], child: child);
   }
 }
+
