@@ -70,7 +70,7 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
           // Tab Bar
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color.fromARGB(255, 2, 0, 0),
               boxShadow: [
                 BoxShadow(
                   color: Colors.grey.withOpacity(0.1),

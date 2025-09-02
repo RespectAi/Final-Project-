@@ -18,16 +18,13 @@ class DashboardPage extends StatefulWidget {
 }
 
 class DashboardPageState extends State<DashboardPage> {
-  // Real data from Supabase
   late Future<List<Map<String, dynamic>>> _itemsFuture;
-
   final List<String> announcements = [
     "Upcoming Feature: AI-based expiry prediction",
     "Tip: Donate unused food before it spoils",
     "New: Scan QR codes to add items faster",
   ];
-
-  int expandedIndex = -1; // For inline expansion
+  int expandedIndex = -1;
 
   @override
   void initState() {
@@ -42,129 +39,134 @@ class DashboardPageState extends State<DashboardPage> {
     });
   }
 
-  // Exposed for parent tab to request a refresh when user navigates back
   void refresh() => _refreshInventory();
+
+  String _getCurrentUserDisplayName() {
+    if (widget.supa.isAdminMode) return 'Admin';
+    if (widget.supa.activeLocalUserName != null) return widget.supa.activeLocalUserName!;
+    final email = widget.supa.client.auth.currentUser?.email;
+    return email?.split('@').first ?? 'User';
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final userName = _getCurrentUserDisplayName();
+    final greeting = _getGreeting();
+
     return Scaffold(
-      appBar: buildGradientAppBar(
-        context,
-        'WasteLess',
-        showBackIfCanPop: false,
-        actions: [
-          IconButton(
-            tooltip: 'Scan QR',
-            icon: const Icon(Icons.qr_code_scanner),
-            onPressed: () {
-              showCornerToast(context, message: 'QR scanner coming soon');
-            },
+      // Use a PreferredSize for a custom header but keep the normal scaffold body/Expanded behavior.
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(120),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [kGradientStart, kGradientEnd],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
           ),
-          const SizedBox(width: 4),
-        ],
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      // Avatar
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white.withOpacity(0.25), width: 2),
+                        ),
+                        child: Icon(
+                          widget.supa.isAdminMode ? Icons.admin_panel_settings : Icons.person,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Greeting & name
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(greeting, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                            Text(userName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                      // QR action
+                      Container(
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+                        child: IconButton(
+                          icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                          onPressed: () => showCornerToast(context, message: 'QR scanner coming soon'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Welcome line + marquee below it
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withOpacity(0.12)),
+                        ),
+                        child: const Text('Welcome to WasteLess', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 12),
+                      // marquee area - take the rest of the space
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: SizedBox(
+                            height: 28,
+                            child: _Marquee(messages: announcements),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
+
+      // Body uses the original left/right structure so Expanded and scrolls work like before
       body: Column(
         children: [
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final isSmall = constraints.maxWidth < 700;
-                // Keep a left-right split on all sizes. On small screens,
-                // the right side becomes a vertical stack of square cards.
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Left pane (Recent items) - keep original behavior
                     Expanded(flex: 2, child: _buildLeftPane(isSmall)),
+
+                    // Right pane: cards area
                     Expanded(
                       flex: 2,
-                      child: isSmall
-                          ? ListView(
-                              padding: const EdgeInsets.all(12),
-                              children: [
-                                AspectRatio(
-                                  aspectRatio: 1,
-                                  child: _buildBigCard(
-                                    'Categories',
-                                    Icons.category,
-                                    onTap: () async {
-                                      final cats = await widget.supa
-                                          .fetchCategories();
-                                      if (cats.isNotEmpty) {
-                                        final id = cats.first['id'].toString();
-                                        final name =
-                                            cats.first['name'] as String? ?? '';
-                                        Navigator.of(context).pushNamed(
-                                          CategoriesPage.route,
-                                          arguments: {
-                                            'categoryId': id,
-                                            'categoryName': name,
-                                          },
-                                        );
-                                      } else {
-                                        Navigator.of(
-                                          context,
-                                        ).pushNamed(CategoriesPage.route);
-                                      }
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                AspectRatio(
-                                  aspectRatio: 1,
-                                  child: _buildBigCard(
-                                    'Fridges',
-                                    Icons.kitchen,
-                                    onTap: () => Navigator.pushNamed(
-                                      context,
-                                      FridgesPage.route,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                AspectRatio(
-                                  aspectRatio: 1,
-                                  child: _buildBigCard(
-                                    'Users',
-                                    Icons.people,
-                                    onTap: () => Navigator.pushNamed(
-                                      context,
-                                      UserPage.route,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : GridView.count(
-                              padding: const EdgeInsets.all(12),
-                              crossAxisCount: 2,
-                              childAspectRatio: 1.1,
-                              children: [
-                                _buildBigCard(
-                                  'Categories',
-                                  Icons.category,
-                                  onTap: () => Navigator.pushNamed(
-                                    context,
-                                    CategoriesPage.route,
-                                  ),
-                                ),
-                                _buildBigCard(
-                                  'Fridges',
-                                  Icons.kitchen,
-                                  onTap: () => Navigator.pushNamed(
-                                    context,
-                                    FridgesPage.route,
-                                  ),
-                                ),
-                                _buildBigCard(
-                                  'Users',
-                                  Icons.people,
-                                  onTap: () => Navigator.pushNamed(
-                                    context,
-                                    UserPage.route,
-                                  ),
-                                ),
-                              ],
-                            ),
+                      child: isSmall ? _buildVerticalCards() : _buildGridCards(),
                     ),
                   ],
                 );
@@ -172,18 +174,15 @@ class DashboardPageState extends State<DashboardPage> {
             ),
           ),
 
-          // Larger quick buttons
+          // Quick action buttons (kept at bottom)
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.list),
-                    label: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('Inventory'),
-                    ),
+                    label: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Inventory')),
                     onPressed: () => widget.onNavigateToTab?.call(1),
                   ),
                 ),
@@ -191,10 +190,7 @@ class DashboardPageState extends State<DashboardPage> {
                 Expanded(
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.delete),
-                    label: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('Waste log'),
-                    ),
+                    label: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Waste log')),
                     onPressed: () => widget.onNavigateToTab?.call(2),
                   ),
                 ),
@@ -202,296 +198,220 @@ class DashboardPageState extends State<DashboardPage> {
                 Expanded(
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.card_giftcard),
-                    label: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('Donate'),
-                    ),
+                    label: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Donate')),
                     onPressed: () => widget.onNavigateToTab?.call(3),
                   ),
                 ),
               ],
             ),
           ),
-
-          // Bottom announcements bar (placeholder content for now)
-          SizedBox(
-  height: 32,
-  child: SafeArea(
-    // allow only bottom safe padding so it won't overlap system nav
-    top: false,
-    bottom: true,
-    child: _Marquee(messages: announcements),
-  ),
-),
-
         ],
       ),
     );
   }
 
-  Widget _buildBigCard(String title, IconData icon, {VoidCallback? onTap}) {
-    return Card(
-      elevation: 3,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 32),
-              const SizedBox(height: 6),
-              Text(title, style: const TextStyle(fontSize: 15)),
-            ],
+  // ---------- Cards (right side) ----------
+  Widget _buildVerticalCards() {
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        _buildModernCard('Categories', Icons.category, Colors.purple, () async {
+          final cats = await widget.supa.fetchCategories();
+          if (cats.isNotEmpty) {
+            final id = cats.first['id'].toString();
+            final name = cats.first['name'] as String? ?? '';
+            Navigator.of(context).pushNamed(CategoriesPage.route, arguments: {'categoryId': id, 'categoryName': name});
+          } else {
+            Navigator.of(context).pushNamed(CategoriesPage.route);
+          }
+        }),
+        const SizedBox(height: 12),
+        _buildModernCard('Fridges', Icons.kitchen, Colors.teal, () {
+          Navigator.pushNamed(context, FridgesPage.route);
+        }),
+        const SizedBox(height: 12),
+        _buildModernCard('Users', Icons.people, Colors.indigo, () {
+          Navigator.pushNamed(context, UserPage.route);
+        }),
+      ],
+    );
+  }
+
+  Widget _buildGridCards() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: GridView.count(
+        crossAxisCount: 2,
+        childAspectRatio: 1.1,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        children: [
+          _buildModernCard('Categories', Icons.category, Colors.purple, () => Navigator.pushNamed(context, CategoriesPage.route)),
+          _buildModernCard('Fridges', Icons.kitchen, Colors.teal, () => Navigator.pushNamed(context, FridgesPage.route)),
+          _buildModernCard('Users', Icons.people, Colors.indigo, () => Navigator.pushNamed(context, UserPage.route)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernCard(String title, IconData icon, Color color, VoidCallback onTap) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [
+        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+      ]),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [color.withOpacity(0.8), color], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+                ),
+                child: Icon(icon, size: 28, color: Colors.white),
+              ),
+              const SizedBox(height: 12),
+              Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
+            ]),
           ),
         ),
       ),
     );
   }
 
-  // _buildSmallCard removed (no longer used)
-
+  // ---------- Left pane (recent items) ----------
   Widget _buildLeftPane(bool isSmall) {
     return RefreshIndicator(
       onRefresh: _refreshInventory,
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: _itemsFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
           final items = snapshot.data ?? const [];
           final dateFmt = DateFormat('EEEE, dd-MM-yyyy, h:mm a');
-          // Make the list scrollable while keeping Other Reminders visible at bottom
+
           return Padding(
             padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: items.length,
-                    itemBuilder: (_, index) {
-                      final item = items[index];
-                      final links =
-                          item['inventory_item_categories'] as List<dynamic>? ??
-                          [];
-                      final cats = links
-                          .map(
-                            (link) =>
-                                (link['categories'] as Map<String, dynamic>? ??
-                                {}),
-                          )
-                          .toList();
-                      final firstCat = cats.isNotEmpty ? cats.first : null;
-                      final catIcon = firstCat != null
-                          ? (firstCat['icon_url'] as String?)
-                          : null;
-                      final name =
-                          (item['name'] as String?)?.trim().isNotEmpty == true
-                          ? (item['name'] as String)
-                          : 'Unnamed';
-                      final expiry =
-                          DateTime.tryParse(
-                            item['expiry_date'] as String? ?? '',
-                          ) ??
-                          DateTime.now();
-                      final createdAt =
-                          DateTime.tryParse(
-                            item['created_at'] as String? ?? '',
-                          ) ??
-                          DateTime.now();
-                      final now = DateTime.now();
-                      final diff = expiry.difference(now);
-                      final daysLeft = diff.inDays;
-                      final hoursLeft = diff.inHours % 24;
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(gradient: const LinearGradient(colors: [kGradientStart, kGradientEnd]), borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.inventory, color: Colors.white, size: 20)),
+                const SizedBox(width: 12),
+                Text('Recent Items', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+              ]),
+              const SizedBox(height: 12),
 
-                      final isExpanded = expandedIndex == index;
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: Column(
-                          children: [
-                            ListTile(
-                              dense: true,
-                              leading: CircleAvatar(
-                                radius: 20,
-                                backgroundColor: Colors.green[50],
-                                child: (catIcon != null && catIcon.isNotEmpty)
-                                    ? ClipOval(
-                                        child: Image.network(
-                                          catIcon,
-                                          width: 30,
-                                          height: 30,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      )
-                                    : const Icon(Icons.eco, size: 22),
-                              ),
-                              title: Text(name),
-                              subtitle: Text(
-                                daysLeft >= 0
-                                    ? 'Expires in $daysLeft day(s) ${hoursLeft}h'
-                                    : 'Expired ${-daysLeft} day(s) ago',
-                              ),
-                              trailing: IconButton(
-                                icon: Icon(
-                                  isExpanded
-                                      ? Icons.keyboard_arrow_up
-                                      : Icons.keyboard_arrow_down,
+              // The ListView is inside an Expanded so it gets a bounded height from the parent Column
+              Expanded(
+                child: items.isEmpty
+                    ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text('No items yet', style: TextStyle(fontSize: 18, color: Colors.grey[600], fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 8),
+                        Text('Add items to your inventory to get started', style: TextStyle(color: Colors.grey[500]), textAlign: TextAlign.center),
+                      ]))
+                    : ListView.builder(
+                        itemCount: items.length,
+                        itemBuilder: (_, index) {
+                          final item = items[index];
+                          final links = item['inventory_item_categories'] as List<dynamic>? ?? [];
+                          final cats = links.map((l) => (l['categories'] as Map<String, dynamic>? ?? {})).toList();
+                          final firstCat = cats.isNotEmpty ? cats.first : null;
+                          final catIcon = firstCat != null ? (firstCat['icon_url'] as String?) : null;
+                          final name = (item['name'] as String?)?.trim().isNotEmpty == true ? (item['name'] as String) : 'Unnamed';
+                          final expiry = DateTime.tryParse(item['expiry_date'] as String? ?? '') ?? DateTime.now();
+                          final createdAt = DateTime.tryParse(item['created_at'] as String? ?? '') ?? DateTime.now();
+                          final now = DateTime.now();
+                          final diff = expiry.difference(now);
+                          final daysLeft = diff.inDays;
+                          final hoursLeft = diff.inHours % 24;
+                          final isExpanded = expandedIndex == index;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                            child: Column(children: [
+                              ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                leading: Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.green.withOpacity(0.06), Colors.green.withOpacity(0.12)]), borderRadius: BorderRadius.circular(12)),
+                                  child: (catIcon != null && catIcon.isNotEmpty)
+                                      ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(catIcon, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.eco)))
+                                      : const Icon(Icons.eco, size: 24, color: Colors.green),
                                 ),
-                                onPressed: () => setState(() {
-                                  expandedIndex = isExpanded ? -1 : index;
-                                }),
+                                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: Text(daysLeft >= 0 ? 'Expires in $daysLeft day(s) ${hoursLeft}h' : 'Expired ${-daysLeft} day(s) ago',
+                                    style: TextStyle(color: daysLeft <= 1 ? Colors.red : Colors.grey[600], fontWeight: daysLeft <= 1 ? FontWeight.w600 : FontWeight.normal)),
+                                trailing: Icon(isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 20),
+                                onTap: () => setState(() => expandedIndex = isExpanded ? -1 : index),
                               ),
-                            ),
-                            if (isExpanded)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  12,
+                              if (isExpanded)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                  child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey.withOpacity(0.05), borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Row(children: [Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]), const SizedBox(width: 8), Expanded(child: Text('Added: ${dateFmt.format(createdAt.toLocal())}', style: TextStyle(color: Colors.grey[600]))) ]),
+                                    const SizedBox(height: 8),
+                                    Row(children: [Icon(Icons.event, size: 16, color: Colors.grey[600]), const SizedBox(width: 8), Expanded(child: Text('Expires: ${dateFmt.format(expiry.toLocal())}', style: TextStyle(color: Colors.grey[600]))) ]),
+                                    const SizedBox(height: 12),
+                                    const Text('Categories', style: TextStyle(fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: 8),
+                                    Wrap(spacing: 8, runSpacing: 6, children: cats.map((c) {
+                                      final iconUrl = (c['icon_url'] as String?) ?? '';
+                                      final label = (c['name'] as String?) ?? '';
+                                      final catId = (c['id']?.toString() ?? '');
+                                      return InkWell(onTap: () {
+                                        if (catId.isNotEmpty) Navigator.of(context).pushNamed(CategoriesPage.route, arguments: {'categoryId': catId, 'categoryName': label});
+                                      }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.08), borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                        if (iconUrl.isNotEmpty) Padding(padding: const EdgeInsets.only(right: 6), child: Image.network(iconUrl, width: 16, height: 16, errorBuilder: (_, __, ___) => const Icon(Icons.eco, size: 16))),
+                                        Text(label, style: TextStyle(fontSize: 12, color: Colors.blue[700], fontWeight: FontWeight.w500))
+                                      ])));
+                                    }).toList()),
+                                  ])),
                                 ),
-                                child: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[50],
-                                    border: Border.all(color: Colors.black12),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.calendar_today,
-                                            size: 16,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              'Entry: ${dateFmt.format(createdAt.toLocal())}',
-                                              softWrap: true,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.event, size: 16),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              'Expiry: ${dateFmt.format(expiry.toLocal())}',
-                                              softWrap: true,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      const Text(
-                                        'Categories',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 6,
-                                        children: cats.map((c) {
-                                          final iconUrl =
-                                              (c['icon_url'] as String?) ?? '';
-                                          final label =
-                                              (c['name'] as String?) ?? '';
-                                          final catId =
-                                              (c['id']?.toString() ?? '');
-                                          return ActionChip(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 0,
-                                            ),
-                                            avatar: iconUrl.isNotEmpty
-                                                ? Image.network(
-                                                    iconUrl,
-                                                    width: 16,
-                                                    height: 16,
-                                                  )
-                                                : const Icon(
-                                                    Icons.eco,
-                                                    size: 16,
-                                                  ),
-                                            label: Text(label),
-                                            onPressed: () {
-                                              if (catId.isNotEmpty) {
-                                                Navigator.of(context).pushNamed(
-                                                  CategoriesPage.route,
-                                                  arguments: {
-                                                    'categoryId': catId,
-                                                    'categoryName': label,
-                                                  },
-                                                );
-                                              }
-                                            },
-                                          );
-                                        }).toList(),
-                                      ),
-                                      if (cats.isEmpty)
-                                        const Text(
-                                          'No category',
-                                          style: TextStyle(
-                                            color: Colors.black54,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                SizedBox(
-                  height: isSmall ? 120 : 160,
-                  child: Card(
-                    color: Colors.teal[50],
-                    child: ListTile(
-                      title: const Text(
-                        'Other Reminders',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        'Non-expiry reminders and tasks',
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      trailing: const Icon(Icons.alarm),
-                      onTap: () => showCornerToast(
-                        context,
-                        message: 'Other Reminders — coming soon',
-                        alignment: Alignment.topLeft,
-                      ),
+                            ]),
+                          );
+                        }),
+              ),
+
+              const SizedBox(height: 12),
+              // Other reminders card
+              Container(
+                height: 120,
+                decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.teal.withOpacity(0.08), Colors.teal.withOpacity(0.14)]), borderRadius: BorderRadius.circular(16)),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => showCornerToast(context, message: 'Other Reminders — coming soon', alignment: Alignment.topLeft),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(children: [
+                        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.teal.withOpacity(0.14), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.alarm, color: Colors.teal)),
+                        const SizedBox(width: 16),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Text('Other Reminders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+                          const SizedBox(height: 4),
+                          Text('Non-expiry reminders and tasks', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+                        ])),
+                        const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.teal),
+                      ]),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ]),
           );
         },
       ),
@@ -499,6 +419,8 @@ class DashboardPageState extends State<DashboardPage> {
   }
 }
 
+/// Marquee that avoids the RenderFlex overflow warning by letting the large
+/// content exist in an OverflowBox and translating it. It is clipped via ClipRect.
 class _Marquee extends StatefulWidget {
   final List<String> messages;
   const _Marquee({required this.messages});
@@ -509,15 +431,13 @@ class _Marquee extends StatefulWidget {
 
 class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  static const double _gap = 48.0; // gap between repeated texts
-  static const double _speedPxPerSecond = 70.0; // adjust for faster/slower
+  static const double _gap = 48.0;
+  static const double _speedPxPerSecond = 70.0;
 
   @override
   void initState() {
     super.initState();
-    // initial duration will be updated in build if needed
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12));
-    _controller.repeat();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
   }
 
   @override
@@ -529,76 +449,55 @@ class _MarqueeState extends State<_Marquee> with SingleTickerProviderStateMixin 
   @override
   Widget build(BuildContext context) {
     final text = widget.messages.join('     •     ');
+    final textStyle = const TextStyle(color: Colors.white, fontSize: 13);
 
     return LayoutBuilder(builder: (context, constraints) {
       final maxWidth = constraints.maxWidth;
-
-      final tp = TextPainter(
-        text: TextSpan(text: text, style: const TextStyle(color: Colors.white)),
-        textDirection: ui.TextDirection.ltr,
-      )..layout();
+      final tp = TextPainter(text: TextSpan(text: text, style: textStyle), textDirection: ui.TextDirection.ltr, maxLines: 1)..layout();
       final textWidth = tp.width;
-      
 
-      // if text fits, no animation needed
+      // If it fits, show static single-line text
       if (textWidth <= maxWidth - 24) {
         if (_controller.isAnimating) _controller.stop();
         return Container(
-          color: Colors.green[800],
+          color: Colors.transparent,
           alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(text, style: const TextStyle(color: Colors.white)),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(text, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
         );
       }
 
-      // text wider than viewport -> animate
+      // Animate: compute total distance and duration
       final totalDistance = textWidth + _gap;
       final durationSeconds = (totalDistance / _speedPxPerSecond).clamp(6.0, 40.0);
       _controller.duration = Duration(milliseconds: (durationSeconds * 1000).toInt());
       if (!_controller.isAnimating) _controller.repeat();
 
-      return Container(
-        color: Colors.green[800],
-        child: ClipRect(
-          child: SizedBox(
-            width: maxWidth,
-            height: 32,
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) {
-                final dx = -_controller.value * totalDistance;
-                return Stack(
-                  children: [
-                    // First text instance
-                    Positioned(
-                      left: dx + 12,
-                      top: 0,
-                      bottom: 0,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          text,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                    // Second text instance (for seamless loop)
-                    Positioned(
-                      left: dx + textWidth + _gap + 12,
-                      top: 0,
-                      bottom: 0,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          text,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+      return ClipRect(
+        child: Container(
+          color: Colors.transparent,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final dx = -_controller.value * totalDistance;
+              // OverflowBox allows the large Row to be measured without throwing the RenderFlex overflow warning.
+              return Transform.translate(
+                offset: Offset(dx, 0),
+                child: OverflowBox(
+                  maxWidth: double.infinity,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      SizedBox(width: textWidth, child: Text(text, style: textStyle, maxLines: 1, softWrap: false, overflow: TextOverflow.visible)),
+                      SizedBox(width: _gap),
+                      SizedBox(width: textWidth, child: Text(text, style: textStyle, maxLines: 1, softWrap: false, overflow: TextOverflow.visible)),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ),
       );
