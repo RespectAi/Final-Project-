@@ -7,6 +7,7 @@ import '../widgets/common.dart';
 import 'categories_page.dart';
 import 'user_page.dart';
 import 'fridges_page.dart';
+import '../pages/auth_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final SupabaseService supa;
@@ -108,13 +109,44 @@ class DashboardPageState extends State<DashboardPage> {
                         ),
                       ),
                       // QR action
-                      Container(
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
-                        child: IconButton(
-                          icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
-                          onPressed: () => showCornerToast(context, message: 'QR scanner coming soon'),
-                        ),
-                      ),
+                      Row(
+  children: [
+    // QR action
+    Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: IconButton(
+        icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+        onPressed: () => showCornerToast(context, message: 'QR scanner coming soon'),
+      ),
+    ),
+    const SizedBox(width: 8),
+    // Logout action
+    Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: IconButton(
+        icon: const Icon(Icons.logout, color: Colors.white),
+        onPressed: () async {
+          await widget.supa.client.auth.signOut();
+          widget.supa.clearUserContext(); // clear local session if used
+          if (context.mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => AuthGate(supa: widget.supa)),
+              (route) => false,
+            );
+          }
+        },
+      ),
+    ),
+  ],
+),
+
                     ],
                   ),
                   const SizedBox(height: 8),
