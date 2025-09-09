@@ -19,6 +19,9 @@ import 'services/supabase_service.dart';
 import 'widgets/common.dart';
 import 'pages/categories_page.dart';
 import 'pages/fridges_page.dart';
+import 'pages/reset_password_page.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +47,17 @@ void main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRveGhqb253ZXhxc3Jrc2FrcHFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDE5ODAsImV4cCI6MjA2Nzg3Nzk4MH0.YMUqqYHnkIT2tD8wlSJu3qePnLaXXPBZvYUmHf41RGc',
   );
 
+  Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+  final AuthChangeEvent event = data.event;
+  final Session? session = data.session;
+
+  if (event == AuthChangeEvent.passwordRecovery && session != null) {
+    navigatorKey.currentState?.pushReplacement(
+      MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
+      );
+    }
+  });
+
   // create single instance of SupabaseService and pass the plugin in
   final supa = SupabaseService(flutterLocal);
 
@@ -68,6 +82,7 @@ class WasteLessApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final seed = const Color(0xFF2E7D32);
     return MaterialApp(
+      navigatorKey: navigatorKey, // 👈 add this
       title: 'WasteLess',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -99,9 +114,10 @@ class WasteLessApp extends StatelessWidget {
         WasteLogPage.route: (_) => WasteLogPage(supa: supa),
         DonationPage.route: (_) => DonationPage(supa: supa),
         CategoriesPage.route: (_) => CategoriesPage(supa: supa),
-  FridgesPage.route: (_) => FridgesPage(supa: supa),
+        FridgesPage.route: (_) => FridgesPage(supa: supa),
         UserPage.route: (_) => UserPage(supa: supa),
         '/local-user': (_) => LocalUserGate(supa: supa),
+        '/reset-password': (_) => const ResetPasswordPage(),
       },
     );
   }

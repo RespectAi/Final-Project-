@@ -128,15 +128,42 @@ class _AuthGateState extends State<AuthGate> {
                   ),
                   const SizedBox(height: 20),
                   SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.login),
-                      onPressed: _loading ? null : _submit,
-                      label: _loading
-                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator.adaptive(strokeWidth: 2))
-                          : Text(_isLogin ? 'Login' : 'Sign Up'),
-                    ),
-                  ),
+  width: double.infinity,
+  child: ElevatedButton.icon(
+    icon: const Icon(Icons.login),
+    onPressed: _loading ? null : _submit,
+    label: _loading
+        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator.adaptive(strokeWidth: 2))
+        : Text(_isLogin ? 'Login' : 'Sign Up'),
+  ),
+),
+if (_isLogin) // show only in login mode
+  TextButton(
+    onPressed: () async {
+      final email = _emailController.text.trim();
+      if (email.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Enter your email first")),
+        );
+        return;
+      }
+      try {
+        await widget.supa.sendPasswordReset(email);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Password reset link sent!")),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: $e")),
+          );
+        }
+      }
+    },
+    child: const Text("Forgot password?"),
+  ),
                   TextButton(
                     onPressed: () => setState(() => _isLogin = !_isLogin),
                     child: Text(_isLogin ? 'Need an account? Sign Up' : 'Have an account? Login'),

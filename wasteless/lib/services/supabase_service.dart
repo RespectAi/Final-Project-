@@ -1108,5 +1108,14 @@ Future<Map<String, dynamic>> joinFridgeWithCode(String code) async {
   }
  }
 
+ Future<void> sendPasswordReset(String email) async {
+    await client.auth.resetPasswordForEmail(
+      email,
+      redirectTo: 'wasteless://reset',
+      // redirectTo: 'http://localhost:64055'
+      // or a deep link if mobile
+    );
+  }
+
 }
 

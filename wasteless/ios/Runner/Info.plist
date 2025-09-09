@@ -42,6 +42,15 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLSchemes</key>
+    <array>
+      <string>wasteless</string>
+    </array>
+  </dict>
+</array>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
