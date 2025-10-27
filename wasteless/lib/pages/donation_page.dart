@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
 import '../widgets/common.dart';
+import 'dart:ui' as ui;
 
 class DonationPage extends StatefulWidget {
   static const route = '/donate';
@@ -59,85 +60,169 @@ class DonationPageState extends State<DonationPage> {
   Widget build(BuildContext context) {
     if (_itemId != null) {
       return Scaffold(
-        appBar: buildGradientAppBar(context, 'Offer Donation: ${_itemName.isEmpty ? "Item" : _itemName}'),
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Item: ${_itemName.isEmpty ? _itemId : _itemName}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _controller,
-                decoration: const InputDecoration(labelText: 'Recipient Info'),
+        extendBodyBehindAppBar: true,
+        body: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              expandedHeight: 160,
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: const EdgeInsets.only(left: 16, bottom: 12),
+                title: Text(
+                  'Offer Donation: ${_itemName.isEmpty ? "Item" : _itemName}',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [kGradientStart, kGradientEnd],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                    ),
+                    BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(color: Colors.black.withOpacity(0.1)),
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(onPressed: () => _submit(_itemId!), child: const Text('Donate')),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Item: ${_itemName.isEmpty ? _itemId : _itemName}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(labelText: 'Recipient Info'),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => _submit(_itemId!),
+                        child: const Text('Donate'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     } else {
       final showOwnAppBar = Navigator.of(context).canPop();
       return Scaffold(
-        appBar: showOwnAppBar ? buildGradientAppBar(context, 'All Donations', showBackIfCanPop: true) : null,
-        body: RefreshIndicator(
-          onRefresh: _refreshDonations,
-          child: FutureBuilder<List<Map<String, dynamic>>>(
-            future: _donations,
-            builder: (ctx, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
-              }
-              final list = snap.data ?? [];
-              if (list.isEmpty) {
-                return const Center(child: Text('No donations yet.'));
-              }
-              return ListView.builder(
-                padding: const EdgeInsets.all(8),
-                itemCount: list.length,
-                itemBuilder: (_, i) {
-                  final d = list[i];
-                  final when = DateTime.parse(d['offered_at']);
-                  final formatted = DateFormat.yMMMd().add_jm().format(when);
-                  final inv = d['inventory_items'] as Map<String, dynamic>?;
-                  final itemName = (d['item_name'] as String?) ?? (inv?['name'] as String?) ?? 'Unknown Item';
-                  return Card(
-                    child: ListTile(
-                      title: Text('$itemName → ${d['recipient_info']}'),
-                      subtitle: Text(formatted),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () async {
-                          final ok = await showDialog<bool>(
-                            context: context,
-                            builder: (_) => AlertDialog(
-                              title: const Text('Delete donation?'),
-                              content: const Text('Remove this donation permanently?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-                              ],
-                            ),
-                          );
-                          if (ok == true) {
-                            await widget.supa.deleteDonation(d['id'].toString());
-                            await _refreshDonations();
-                          }
-                        },
+        extendBodyBehindAppBar: true,
+        body: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              expandedHeight: 160,
+              automaticallyImplyLeading: showOwnAppBar,
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: const EdgeInsets.only(left: 16, bottom: 12),
+                title: const Text(
+                  'All Donations',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [kGradientStart, kGradientEnd],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                       ),
                     ),
-                  );
-                },
-              );
-            },
-          ),
+                    BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(color: Colors.black.withOpacity(0.1)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: RefreshIndicator(
+                onRefresh: _refreshDonations,
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _donations,
+                  builder: (ctx, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                          height: 400, child: Center(child: CircularProgressIndicator()));
+                    }
+                    if (snap.hasError) {
+                      return SizedBox(
+                          height: 400, child: Center(child: Text('Error: ${snap.error}')));
+                    }
+                    final list = snap.data ?? [];
+                    if (list.isEmpty) {
+                      return const SizedBox(
+                          height: 400, child: Center(child: Text('No donations yet.')));
+                    }
+                    return ListView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.all(8),
+                      itemCount: list.length,
+                      itemBuilder: (_, i) {
+                        final d = list[i];
+                        final when = DateTime.parse(d['offered_at']);
+                        final formatted = DateFormat.yMMMd().add_jm().format(when);
+                        final inv = d['inventory_items'] as Map<String, dynamic>?;
+                        final itemName =
+                            (d['item_name'] as String?) ?? (inv?['name'] as String?) ?? 'Unknown Item';
+                        return Card(
+                          child: ListTile(
+                            title: Text('$itemName → ${d['recipient_info']}'),
+                            subtitle: Text(formatted),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.redAccent),
+                              onPressed: () async {
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    title: const Text('Delete donation?'),
+                                    content: const Text('Remove this donation permanently?'),
+                                    actions: [
+                                      TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Cancel')),
+                                      TextButton(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          child: const Text('Delete')),
+                                    ],
+                                  ),
+                                );
+                                if (ok == true) {
+                                  await widget.supa.deleteDonation(d['id'].toString());
+                                  await _refreshDonations();
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }

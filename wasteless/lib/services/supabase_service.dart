@@ -782,7 +782,7 @@ Future<Map<String, dynamic>> joinFridgeWithCode(String code) async {
       } else if (insertRes is List && insertRes.isNotEmpty) {
         insertedRow = Map<String, dynamic>.from(insertRes.first as Map);
       } else if (insertRes is Map) {
-        insertedRow = Map<String, dynamic>.from(insertRes as Map);
+        // insertedRow = Map<String, dynamic>.from(insertRes as Map);
       } else {
         debugPrint('Unexpected insertRes shape: ${insertRes.runtimeType} -> $insertRes');
         insertedRow = null;

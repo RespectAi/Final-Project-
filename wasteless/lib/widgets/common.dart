@@ -73,7 +73,7 @@ void showCornerToast(
   debugPrint(st);
   debugPrint('DEBUG: Stack trace end.');
 
-  final overlay = Overlay.of(context);
+  final OverlayState? overlay = Overlay.of(context);
   if (overlay == null) {
     debugPrint('DEBUG: showCornerToast: no Overlay found.');
     return;

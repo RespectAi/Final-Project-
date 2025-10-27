@@ -2,8 +2,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
-import 'waste_log_page.dart';
-import 'donation_page.dart';
+// import 'waste_log_page.dart';
+// import 'donation_page.dart';
 import 'categories_page.dart';
 
 class InventoryList extends StatefulWidget {
