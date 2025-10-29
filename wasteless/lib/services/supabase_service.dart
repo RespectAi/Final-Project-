@@ -128,6 +128,69 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     } catch (_) {}
   }
 
+  /// Add multiple items at once
+  Future<void> addMultipleItems(List<Map<String, dynamic>> items) async {
+    final uid = client.auth.currentUser!.id;
+
+    for (final itemData in items) {
+      // 1) insert the item
+      final res = await client
+          .from('inventory_items')
+          .insert({
+            'name': itemData['name'],
+            'expiry_date': (itemData['expiry'] as DateTime).toIso8601String(),
+            'quantity': itemData['quantity'],
+            'reminder_days_before': itemData['reminderDaysBefore'],
+            'reminder_hours_before': itemData['reminderHoursBefore'],
+            'user_id': uid,
+          })
+          .select('id')
+          .single();
+      final itemId = res['id'] as String;
+
+      // 2) link to categories
+      final categoryIds = itemData['categoryIds'] as List<String>;
+      if (categoryIds.isNotEmpty) {
+        await client.from('inventory_item_categories').insert(
+              categoryIds
+                  .map((catId) => {'inventory_item_id': itemId, 'category_id': catId})
+                  .toList(),
+            );
+      }
+
+      // 3) schedule notification (best-effort)
+      try {
+        final expiry = itemData['expiry'] as DateTime;
+        final reminderDaysBefore = itemData['reminderDaysBefore'] as int;
+        final reminderHoursBefore = itemData['reminderHoursBefore'] as int;
+        final notifyTime = expiry.subtract(Duration(days: reminderDaysBefore, hours: reminderHoursBefore));
+        if (notifyTime.isAfter(DateTime.now())) {
+          await _local.zonedSchedule(
+            itemId.hashCode,
+            'Expiry Reminder',
+            '${itemData['name']} expires on ${expiry.toLocal()}',
+            tz.TZDateTime.from(notifyTime, tz.local),
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                'expiry_channel',
+                'Expiry Alerts',
+                channelDescription: 'Reminders for inventory expiry',
+              ),
+              iOS: DarwinNotificationDetails(),
+            ),
+            androidAllowWhileIdle: true,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            matchDateTimeComponents: DateTimeComponents.dateAndTime,
+          );
+        }
+      } catch (_) {}
+    }
+    
+    // Notify listeners that inventory has changed
+    _inventoryController.add(null);
+  }
+
   /// Log waste FOR THIS USER (store item_name before deleting)
   Future<void> logWaste(String itemId, int qty, [String? reason]) async {
     final uid = client.auth.currentUser!.id;
