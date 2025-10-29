@@ -34,13 +34,26 @@ class _AddItemPageState extends State<AddItemPage> {
   final FocusNode _remindDaysFocus = FocusNode();
   final FocusNode _remindHoursFocus = FocusNode();
 
+  // Controllers for reminder fields
+  final TextEditingController _remindDaysController = TextEditingController(text: '1');
+  final TextEditingController _remindHoursController = TextEditingController(text: '0');
+
   // Loading flag to prevent double submits and show spinner in button
   bool _loading = false;
+
+  // Cache for all categories
+  List<Map<String, dynamic>> _categoriesCache = [];
 
   @override
   void initState() {
     super.initState();
     _allCats = widget.supa.fetchCategories();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    _categoriesCache = await widget.supa.fetchCategories();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -49,7 +62,51 @@ class _AddItemPageState extends State<AddItemPage> {
     _quantityFocus.dispose();
     _remindDaysFocus.dispose();
     _remindHoursFocus.dispose();
+    _remindDaysController.dispose();
+    _remindHoursController.dispose();
     super.dispose();
+  }
+
+  /// Get the maximum allowed days from selected categories
+  int? _getMaxAllowedDays() {
+    if (_selectedCatIds.isEmpty) return null;
+    
+    int? maxDays;
+    for (final catId in _selectedCatIds) {
+      final cat = _categoriesCache.firstWhere(
+        (c) => c['id'].toString() == catId,
+        orElse: () => <String, dynamic>{},
+      );
+      final defaultDays = cat['default_expiry_days'] as int?;
+      if (defaultDays != null) {
+        if (maxDays == null || defaultDays > maxDays) {
+          maxDays = defaultDays;
+        }
+      }
+    }
+    return maxDays;
+  }
+
+  /// Check if current reminder days exceed the allowed maximum
+  bool _isReminderDaysExceeded() {
+    final maxDays = _getMaxAllowedDays();
+    if (maxDays == null) return false;
+    return _remindDays > maxDays;
+  }
+
+  /// Get validation error message for reminder days
+  String? _getReminderDaysError() {
+    if (_selectedCatIds.isEmpty) {
+      return 'Select a category first';
+    }
+    final maxDays = _getMaxAllowedDays();
+    if (maxDays == null) {
+      return null; // No limit set for any selected category
+    }
+    if (_remindDays > maxDays) {
+      return 'Cannot exceed $maxDays day(s)';
+    }
+    return null;
   }
 
   void _addToList() {
@@ -58,6 +115,14 @@ class _AddItemPageState extends State<AddItemPage> {
     if (_selectedCatIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select at least one category')),
+      );
+      return;
+    }
+
+    // Check reminder days limit
+    if (_isReminderDaysExceeded()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reminder days cannot exceed ${_getMaxAllowedDays()} day(s) for selected categories')),
       );
       return;
     }
@@ -81,6 +146,8 @@ class _AddItemPageState extends State<AddItemPage> {
       _quantity = 1;
       _remindDays = 1;
       _remindHours = 0;
+      _remindDaysController.text = '1';
+      _remindHoursController.text = '0';
       _selectedCatIds.clear();
     });
 
@@ -104,6 +171,14 @@ class _AddItemPageState extends State<AddItemPage> {
       if (_selectedCatIds.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please select at least one category')),
+        );
+        return;
+      }
+
+      // Check reminder days limit
+      if (_isReminderDaysExceeded()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Reminder days cannot exceed ${_getMaxAllowedDays()} day(s) for selected categories')),
         );
         return;
       }
@@ -165,6 +240,9 @@ class _AddItemPageState extends State<AddItemPage> {
 
   @override
   Widget build(BuildContext context) {
+    final reminderDaysError = _getReminderDaysError();
+    final isReminderInvalid = reminderDaysError != null && _selectedCatIds.isNotEmpty;
+
     return Scaffold(
       appBar: gradientAppBar(_isAddingMultiple ? 'Add Multiple Items' : 'Add Inventory Item'),
       body: Column(
@@ -224,65 +302,25 @@ class _AddItemPageState extends State<AddItemPage> {
                           const SizedBox(height: 12),
 
                           // Quantity
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  focusNode: _quantityFocus,
-                                  textInputAction: TextInputAction.next,
-                                  decoration: const InputDecoration(labelText: 'Quantity'),
-                                  keyboardType: TextInputType.number,
-                                  initialValue: '1',
-                                  onSaved: (v) => _quantity = int.tryParse(v ?? '1') ?? 1,
-                                  validator: (v) {
-                                    if (v == null) return 'Required';
-                                    final n = int.tryParse(v);
-                                    if (n == null || n < 1) return 'Enter a positive number';
-                                    return null;
-                                  },
-                                  onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindDaysFocus),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Remind (days)'),
-                                  SizedBox(
-                                    width: 110,
-                                    child: TextFormField(
-                                      focusNode: _remindDaysFocus,
-                                      textInputAction: TextInputAction.next,
-                                      decoration: const InputDecoration(hintText: '1'),
-                                      keyboardType: TextInputType.number,
-                                      initialValue: '1',
-                                      onSaved: (v) => _remindDays = int.tryParse(v ?? '1') ?? 1,
-                                      onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindHoursFocus),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 12),
                           TextFormField(
-                            focusNode: _remindHoursFocus,
-                            textInputAction: TextInputAction.done,
-                            decoration: const InputDecoration(labelText: 'Remind (hours)'),
+                            focusNode: _quantityFocus,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(labelText: 'Quantity'),
                             keyboardType: TextInputType.number,
-                            initialValue: '0',
-                            onSaved: (v) => _remindHours = int.tryParse(v ?? '0') ?? 0,
-                            onFieldSubmitted: (_) {
-                              if (_isAddingMultiple) {
-                                _addToList();
-                              } else {
-                                _submit();
-                              }
+                            initialValue: '1',
+                            onSaved: (v) => _quantity = int.tryParse(v ?? '1') ?? 1,
+                            validator: (v) {
+                              if (v == null) return 'Required';
+                              final n = int.tryParse(v);
+                              if (n == null || n < 1) return 'Enter a positive number';
+                              return null;
                             },
+                            onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindDaysFocus),
                           ),
 
                           const SizedBox(height: 12),
+                          
+                          // Categories (moved before reminder to validate reminder against categories)
                           FutureBuilder<List<Map<String, dynamic>>>(
                             future: _allCats,
                             builder: (ctx, snap) {
@@ -300,6 +338,7 @@ class _AddItemPageState extends State<AddItemPage> {
                                   const SizedBox(height: 8),
                                   Wrap(
                                     spacing: 8,
+                                    runSpacing: 8,
                                     children: cats.map((c) {
                                       final id = c['id'] as String;
                                       final name = c['name'] as String;
@@ -316,6 +355,13 @@ class _AddItemPageState extends State<AddItemPage> {
                                               const Icon(Icons.eco, size: 18),
                                             const SizedBox(width: 8),
                                             Text(name),
+                                            if (defaultDays != null) ...[
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '($defaultDays d)',
+                                                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                                              ),
+                                            ],
                                           ],
                                         ),
                                         selected: selected,
@@ -325,9 +371,21 @@ class _AddItemPageState extends State<AddItemPage> {
                                               _selectedCatIds.add(id);
                                               if (defaultDays != null && defaultDays > 0) {
                                                 _expiry = DateTime.now().add(Duration(days: defaultDays));
+                                                // Adjust reminder if it exceeds new category limit
+                                                final maxDays = _getMaxAllowedDays();
+                                                if (maxDays != null && _remindDays > maxDays) {
+                                                  _remindDays = maxDays;
+                                                  _remindDaysController.text = maxDays.toString();
+                                                }
                                               }
                                             } else {
                                               _selectedCatIds.remove(id);
+                                              // Revalidate after removing category
+                                              final maxDays = _getMaxAllowedDays();
+                                              if (maxDays != null && _remindDays > maxDays) {
+                                                _remindDays = maxDays;
+                                                _remindDaysController.text = maxDays.toString();
+                                              }
                                             }
                                           });
                                         },
@@ -339,12 +397,107 @@ class _AddItemPageState extends State<AddItemPage> {
                                       padding: EdgeInsets.only(top: 8.0),
                                       child: Text(
                                         'Please select at least one category',
-                                        style: TextStyle(color: Colors.redAccent),
+                                        style: TextStyle(color: Colors.redAccent, fontSize: 12),
+                                      ),
+                                    ),
+                                  if (_selectedCatIds.isNotEmpty && _getMaxAllowedDays() != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        'Max reminder: ${_getMaxAllowedDays()} day(s) for selected categories',
+                                        style: TextStyle(
+                                          color: Colors.blue[700],
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ),
                                 ],
                               );
                             },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Reminder days with validation
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _remindDaysController,
+                                  focusNode: _remindDaysFocus,
+                                  textInputAction: TextInputAction.next,
+                                  decoration: InputDecoration(
+                                    labelText: 'Remind (days before expiry)',
+                                    labelStyle: TextStyle(
+                                      color: isReminderInvalid ? Colors.red : null,
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(
+                                        color: isReminderInvalid ? Colors.red : Colors.black12,
+                                        width: isReminderInvalid ? 2 : 1,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(
+                                        color: isReminderInvalid ? Colors.red : Theme.of(context).primaryColor,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    errorBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: Colors.red, width: 2),
+                                    ),
+                                    focusedErrorBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: Colors.red, width: 2),
+                                    ),
+                                    errorText: isReminderInvalid ? reminderDaysError : null,
+                                    errorStyle: const TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  style: TextStyle(
+                                    color: isReminderInvalid ? Colors.red : Colors.black,
+                                    fontWeight: isReminderInvalid ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                  onChanged: (v) {
+                                    setState(() {
+                                      _remindDays = int.tryParse(v) ?? 1;
+                                    });
+                                  },
+                                  onSaved: (v) => _remindDays = int.tryParse(v ?? '1') ?? 1,
+                                  onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindHoursFocus),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _remindHoursController,
+                                  focusNode: _remindHoursFocus,
+                                  textInputAction: TextInputAction.done,
+                                  decoration: const InputDecoration(labelText: 'Remind (hours)'),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (v) {
+                                    setState(() {
+                                      _remindHours = int.tryParse(v) ?? 0;
+                                    });
+                                  },
+                                  onSaved: (v) => _remindHours = int.tryParse(v ?? '0') ?? 0,
+                                  onFieldSubmitted: (_) {
+                                    if (_isAddingMultiple && !isReminderInvalid) {
+                                      _addToList();
+                                    } else if (!isReminderInvalid) {
+                                      _submit();
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           const SizedBox(height: 16),
@@ -374,16 +527,22 @@ class _AddItemPageState extends State<AddItemPage> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
-                                onPressed: _addToList,
+                                onPressed: isReminderInvalid ? null : _addToList,
                                 icon: const Icon(Icons.playlist_add),
                                 label: const Text('Add to List'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isReminderInvalid ? Colors.grey : null,
+                                ),
                               ),
                             )
                           else
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: _loading ? null : _submit,
+                                onPressed: (_loading || isReminderInvalid) ? null : _submit,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isReminderInvalid ? Colors.grey : null,
+                                ),
                                 child: _loading
                                     ? const Row(
                                         mainAxisAlignment: MainAxisAlignment.center,
@@ -474,7 +633,11 @@ class _AddItemPageState extends State<AddItemPage> {
                                             item['name'],
                                             style: const TextStyle(fontWeight: FontWeight.w600),
                                           ),
-                                          subtitle: Text('Qty: ${item['quantity']} • Expiry: ${(item['expiry'] as DateTime).toLocal().toString().split(' ')[0]}'),
+                                          subtitle: Text(
+                                            'Qty: ${item['quantity']} • Expiry: ${(item['expiry'] as DateTime).toLocal().toString().split(' ')[0]}\n'
+                                            'Remind: ${item['reminderDaysBefore']}d ${item['reminderHoursBefore']}h before',
+                                          ),
+                                          isThreeLine: true,
                                           trailing: IconButton(
                                             icon: const Icon(Icons.close, color: Colors.red),
                                             onPressed: () => _removeFromList(i),
