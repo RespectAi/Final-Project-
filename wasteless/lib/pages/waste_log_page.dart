@@ -8,7 +8,7 @@ class WasteLogPage extends StatefulWidget {
   static const route = '/waste';
   final SupabaseService supa;
 
-  const WasteLogPage({required this.supa, Key? key}) : super(key: key);
+  const WasteLogPage({required this.supa, super.key});
 
   @override
   WasteLogPageState createState() => WasteLogPageState();

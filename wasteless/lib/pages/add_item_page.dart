@@ -109,6 +109,17 @@ class _AddItemPageState extends State<AddItemPage> {
     return null;
   }
 
+  /// Get validation error message for reminder hours
+  String? _getHoursError() {
+    if (_remindDays <= 0) return null;
+    
+    final maxHours = _remindDays * 24;
+    if (_remindHours > maxHours) {
+      return 'Max ${maxHours}h for ${_remindDays} day(s)';
+    }
+    return null;
+  }
+
   void _addToList() {
     if (!_formKey.currentState!.validate()) return;
 
@@ -123,6 +134,14 @@ class _AddItemPageState extends State<AddItemPage> {
     if (_isReminderDaysExceeded()) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Reminder days cannot exceed ${_getMaxAllowedDays()} day(s) for selected categories')),
+      );
+      return;
+    }
+
+    // Check reminder hours limit
+    if (_getHoursError() != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_getHoursError()!)),
       );
       return;
     }
@@ -179,6 +198,14 @@ class _AddItemPageState extends State<AddItemPage> {
       if (_isReminderDaysExceeded()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Reminder days cannot exceed ${_getMaxAllowedDays()} day(s) for selected categories')),
+        );
+        return;
+      }
+
+      // Check reminder hours limit
+      if (_getHoursError() != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_getHoursError()!)),
         );
         return;
       }
@@ -241,7 +268,10 @@ class _AddItemPageState extends State<AddItemPage> {
   @override
   Widget build(BuildContext context) {
     final reminderDaysError = _getReminderDaysError();
-    final isReminderInvalid = reminderDaysError != null && _selectedCatIds.isNotEmpty;
+    final isReminderDaysInvalid = reminderDaysError != null && _selectedCatIds.isNotEmpty;
+    final hoursError = _getHoursError();
+    final isReminderHoursInvalid = hoursError != null;
+    final isReminderInvalid = isReminderDaysInvalid || isReminderHoursInvalid;
 
     return Scaffold(
       appBar: gradientAppBar(_isAddingMultiple ? 'Add Multiple Items' : 'Add Inventory Item'),
@@ -315,12 +345,15 @@ class _AddItemPageState extends State<AddItemPage> {
                               if (n == null || n < 1) return 'Enter a positive number';
                               return null;
                             },
-                            onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindDaysFocus),
+                            onFieldSubmitted: (_) {
+                              // Move focus to categories section (no specific focus node, so just unfocus)
+                              FocusScope.of(context).unfocus();
+                            },
                           ),
 
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 16),
                           
-                          // Categories (moved before reminder to validate reminder against categories)
+                          // Categories section (NOW FIRST, before reminders)
                           FutureBuilder<List<Map<String, dynamic>>>(
                             future: _allCats,
                             builder: (ctx, snap) {
@@ -419,7 +452,7 @@ class _AddItemPageState extends State<AddItemPage> {
 
                           const SizedBox(height: 16),
 
-                          // Reminder days with validation
+                          // Reminder days and hours (NOW AFTER CATEGORIES)
                           Row(
                             children: [
                               Expanded(
@@ -430,19 +463,19 @@ class _AddItemPageState extends State<AddItemPage> {
                                   decoration: InputDecoration(
                                     labelText: 'Remind (days before expiry)',
                                     labelStyle: TextStyle(
-                                      color: isReminderInvalid ? Colors.red : null,
+                                      color: isReminderDaysInvalid ? Colors.red : null,
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
                                       borderSide: BorderSide(
-                                        color: isReminderInvalid ? Colors.red : Colors.black12,
-                                        width: isReminderInvalid ? 2 : 1,
+                                        color: isReminderDaysInvalid ? Colors.red : Colors.black12,
+                                        width: isReminderDaysInvalid ? 2 : 1,
                                       ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
                                       borderSide: BorderSide(
-                                        color: isReminderInvalid ? Colors.red : Theme.of(context).primaryColor,
+                                        color: isReminderDaysInvalid ? Colors.red : Theme.of(context).primaryColor,
                                         width: 2,
                                       ),
                                     ),
@@ -454,7 +487,7 @@ class _AddItemPageState extends State<AddItemPage> {
                                       borderRadius: BorderRadius.circular(12),
                                       borderSide: const BorderSide(color: Colors.red, width: 2),
                                     ),
-                                    errorText: isReminderInvalid ? reminderDaysError : null,
+                                    errorText: isReminderDaysInvalid ? reminderDaysError : null,
                                     errorStyle: const TextStyle(
                                       color: Colors.red,
                                       fontWeight: FontWeight.w600,
@@ -462,12 +495,18 @@ class _AddItemPageState extends State<AddItemPage> {
                                   ),
                                   keyboardType: TextInputType.number,
                                   style: TextStyle(
-                                    color: isReminderInvalid ? Colors.red : Colors.black,
-                                    fontWeight: isReminderInvalid ? FontWeight.bold : FontWeight.normal,
+                                    color: isReminderDaysInvalid ? Colors.red : Colors.black,
+                                    fontWeight: isReminderDaysInvalid ? FontWeight.bold : FontWeight.normal,
                                   ),
                                   onChanged: (v) {
                                     setState(() {
                                       _remindDays = int.tryParse(v) ?? 1;
+                                      // When days change, validate hours don't exceed the daily limit
+                                      final maxHours = _remindDays * 24;
+                                      if (_remindHours > maxHours) {
+                                        _remindHours = maxHours;
+                                        _remindHoursController.text = maxHours.toString();
+                                      }
                                     });
                                   },
                                   onSaved: (v) => _remindDays = int.tryParse(v ?? '1') ?? 1,
@@ -480,8 +519,44 @@ class _AddItemPageState extends State<AddItemPage> {
                                   controller: _remindHoursController,
                                   focusNode: _remindHoursFocus,
                                   textInputAction: TextInputAction.done,
-                                  decoration: const InputDecoration(labelText: 'Remind (hours)'),
+                                  decoration: InputDecoration(
+                                    labelText: 'Remind (hours)',
+                                    labelStyle: TextStyle(
+                                      color: isReminderHoursInvalid ? Colors.red : null,
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(
+                                        color: isReminderHoursInvalid ? Colors.red : Colors.black12,
+                                        width: isReminderHoursInvalid ? 2 : 1,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(
+                                        color: isReminderHoursInvalid ? Colors.red : Theme.of(context).primaryColor,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    errorBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: Colors.red, width: 2),
+                                    ),
+                                    focusedErrorBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: Colors.red, width: 2),
+                                    ),
+                                    errorText: isReminderHoursInvalid ? hoursError : null,
+                                    errorStyle: const TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                   keyboardType: TextInputType.number,
+                                  style: TextStyle(
+                                    color: isReminderHoursInvalid ? Colors.red : Colors.black,
+                                    fontWeight: isReminderHoursInvalid ? FontWeight.bold : FontWeight.normal,
+                                  ),
                                   onChanged: (v) {
                                     setState(() {
                                       _remindHours = int.tryParse(v) ?? 0;
@@ -515,7 +590,24 @@ class _AddItemPageState extends State<AddItemPage> {
                                     firstDate: DateTime.now(),
                                     lastDate: DateTime.now().add(const Duration(days: 365)),
                                   );
-                                  if (picked != null) setState(() => _expiry = picked);
+                                  if (picked != null) {
+                                    setState(() {
+                                      _expiry = picked;
+                                      // Custom date overrides category default, but validate against max allowed
+                                      final maxDays = _getMaxAllowedDays();
+                                      if (maxDays != null) {
+                                        final categoryExpiry = DateTime.now().add(Duration(days: maxDays));
+                                        // If custom date exceeds category limit, cap it
+                                        if (_expiry.isAfter(categoryExpiry)) {
+                                          _expiry = categoryExpiry;
+                                          showCornerToast(
+                                            context,
+                                            message: 'Expiry date capped to category limit ($maxDays days)',
+                                          );
+                                        }
+                                      }
+                                    });
+                                  }
                                 },
                               ),
                             ],
