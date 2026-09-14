@@ -17,6 +17,7 @@ import 'pages/user_page.dart';
 import 'pages/local_user_gate.dart';
 import 'services/supabase_service.dart';
 import 'widgets/common.dart';
+import 'package:flutter/foundation.dart';
 import 'pages/categories_page.dart';
 import 'pages/fridges_page.dart';
 import 'pages/reset_password_page.dart';
@@ -26,19 +27,26 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // timezone setup
-  tz.initializeTimeZones();
-  final localTz = await FlutterNativeTimezone.getLocalTimezone();
-  tz.setLocalLocation(tz.getLocation(localTz));
-
-  // notification plugin init
   final flutterLocal = FlutterLocalNotificationsPlugin();
-  await flutterLocal.initialize(
-    InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
-    ),
-  );
+
+  if (!kIsWeb) {
+    // timezone setup (mobile only)
+    tz.initializeTimeZones();
+    try {
+      final localTz = await FlutterNativeTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(localTz));
+    } catch (e) {
+      debugPrint('Timezone setup error: $e');
+    }
+
+    // notification plugin init (mobile only)
+    await flutterLocal.initialize(
+      InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(),
+      ),
+    );
+  }
 
   // Initialize Supabase once
   await Supabase.initialize(
