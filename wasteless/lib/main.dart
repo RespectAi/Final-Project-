@@ -21,11 +21,13 @@ import 'package:flutter/foundation.dart';
 import 'pages/categories_page.dart';
 import 'pages/fridges_page.dart';
 import 'pages/reset_password_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   final flutterLocal = FlutterLocalNotificationsPlugin();
 
@@ -48,12 +50,16 @@ void main() async {
     );
   }
 
-  // Initialize Supabase once
-  await Supabase.initialize(
-    url: 'https://doxhjonwexqsrksakpqo.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRveGhqb253ZXhxc3Jrc2FrcHFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDE5ODAsImV4cCI6MjA2Nzg3Nzk4MH0.YMUqqYHnkIT2tD8wlSJu3qePnLaXXPBZvYUmHf41RGc',
-  );
+  // Initialize Supabase once (safely handles hot restart)
+  try {
+    await Supabase.initialize(
+      url: 'https://doxhjonwexqsrksakpqo.supabase.co',
+      anonKey:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRveGhqb253ZXhxc3Jrc2FrcHFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDE5ODAsImV4cCI6MjA2Nzg3Nzk4MH0.YMUqqYHnkIT2tD8wlSJu3qePnLaXXPBZvYUmHf41RGc',
+    );
+  } catch (e) {
+    debugPrint('Supabase already initialized or error: $e');
+  }
 
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
   final AuthChangeEvent event = data.event;
@@ -96,7 +102,6 @@ class WasteLessApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        textTheme: GoogleFonts.openSansTextTheme(),
         scaffoldBackgroundColor: Colors.grey[50],
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -165,6 +170,24 @@ class _HomePageState extends State<HomePage> {
     _rescheduleAll();
     // Load saved user context when app starts
     widget.supa.loadSavedUserContext();
+    _restoreSavedTabIndex();
+  }
+
+  Future<void> _restoreSavedTabIndex() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedIndex = prefs.getInt('home_tab_index') ?? 0;
+      if (mounted && savedIndex > 0 && savedIndex < _pages.length) {
+        setState(() => _currentIndex = savedIndex);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveTabIndex(int idx) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('home_tab_index', idx);
+    } catch (_) {}
   }
 
   Future<void> _rescheduleAll() async {
@@ -185,8 +208,8 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Dashboard now has its own header; keep headers for other tabs only
-      appBar: _currentIndex == 0
+      // Only Dashboard has its own custom greeting header; other tabs use standard gradient app bar
+      appBar: (_currentIndex == 0)
           ? null
           : buildGradientAppBar(
               context,
@@ -210,7 +233,9 @@ class _HomePageState extends State<HomePage> {
           : NavigationBar(
               selectedIndex: _currentIndex,
               onDestinationSelected: (idx) {
+                _saveTabIndex(idx);
                 setState(() => _currentIndex = idx);
+                if (idx == 0) _dashKey.currentState?.refresh();
                 if (idx == 1) _invKey.currentState?.refresh();
                 if (idx == 2) _wasteKey.currentState?.refresh();
                 if (idx == 3) _donKey.currentState?.refresh();

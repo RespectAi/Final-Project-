@@ -105,7 +105,7 @@ class WasteLogPageState extends State<WasteLogPage> {
                 return const Center(child: Text('No waste logged yet.'));
               }
               return ListView.builder(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 90),
                 itemCount: logs.length,
                 itemBuilder: (_, i) {
                   final log = logs[i];
@@ -113,6 +113,10 @@ class WasteLogPageState extends State<WasteLogPage> {
                   final formatted = DateFormat.yMMMd().add_jm().format(when);
                   final inv = log['inventory_items'] as Map<String, dynamic>?;
                   final invName = (log['item_name'] as String?) ?? (inv?['name'] as String?) ?? 'Unknown Item';
+                  final rawReason = (log['reason'] as String?)?.trim() ?? 'no reason';
+                  final reason = rawReason.toLowerCase() == 'soilt'
+                      ? 'Spoilt'
+                      : (rawReason.isNotEmpty ? rawReason[0].toUpperCase() + rawReason.substring(1) : rawReason);
                   return Dismissible(
                     key: Key(log['id'].toString()),
                     direction: DismissDirection.endToStart,
@@ -143,7 +147,7 @@ class WasteLogPageState extends State<WasteLogPage> {
                     child: Card(
                       child: ListTile(
                         title: Text('$invName — ${log['quantity']}'),
-                        subtitle: Text('${log['reason'] ?? 'no reason'} • $formatted'),
+                        subtitle: Text('$reason • $formatted'),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete, color: Colors.redAccent),
                           onPressed: () async {

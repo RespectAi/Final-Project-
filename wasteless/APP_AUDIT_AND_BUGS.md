@@ -7,6 +7,8 @@
 - **Email**: `moses@gmail.com`
 - **Password**: `moses`
 - **Role**: Admin (Password for Admin gate: `moses`)
+          : inioluwa (Password: inioluwa)
+          : ifeoluwa (Password: ifeoluwa)
 
 ---
 
@@ -131,6 +133,11 @@ This document serves as an exhaustive reference for the next agent or developer 
   - Status is displayed as `"soilt"` instead of `"spoilt"` on multiple items (*Jolly Juice*, *mango*, *Butter*).
   - Inconsistent capitalization between `"Spoilt"` and `"spoilt"`.
   - Recipient name in donation record appears as `"Resect"` instead of `"Respect"`.
+
+The root curse is the input of the user, the application recoded the exact spelling the user input 
+
+**Fix**
+- Let the app correct for spelling errors for standered definations but allow for input of unconventionlal names also 
 
 ---
 

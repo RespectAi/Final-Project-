@@ -75,8 +75,10 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     required int reminderDaysBefore,
     required int reminderHoursBefore,
     required List<String> categoryIds,
+    String? fridgeId,
   }) async {
     final uid = client.auth.currentUser!.id;
+    final resolvedFridgeId = fridgeId ?? await getDefaultFridgeId();
 
     // 1) insert the item
     final res = await client
@@ -88,6 +90,7 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           'reminder_days_before': reminderDaysBefore,
           'reminder_hours_before': reminderHoursBefore,
           'user_id': uid,
+          if (resolvedFridgeId != null) 'fridge_id': resolvedFridgeId,
         })
         .select('id')
         .single();
@@ -126,13 +129,18 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
         );
       }
     } catch (_) {}
+
+    // Notify listeners that inventory has changed
+    _inventoryController.add(null);
   }
 
   /// Add multiple items at once
-  Future<void> addMultipleItems(List<Map<String, dynamic>> items) async {
+  Future<void> addMultipleItems(List<Map<String, dynamic>> items, [String? defaultFridgeId]) async {
     final uid = client.auth.currentUser!.id;
+    final resolvedFridgeId = defaultFridgeId ?? await getDefaultFridgeId();
 
     for (final itemData in items) {
+      final fId = (itemData['fridgeId'] as String?) ?? resolvedFridgeId;
       // 1) insert the item
       final res = await client
           .from('inventory_items')
@@ -143,6 +151,7 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
             'reminder_days_before': itemData['reminderDaysBefore'],
             'reminder_hours_before': itemData['reminderHoursBefore'],
             'user_id': uid,
+            if (fId != null) 'fridge_id': fId,
           })
           .select('id')
           .single();
@@ -191,19 +200,21 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     _inventoryController.add(null);
   }
 
-  /// Log waste FOR THIS USER (store item_name before deleting)
+  /// Log waste FOR THIS USER (reduces quantity; deletes only if all units wasted)
   Future<void> logWaste(String itemId, int qty, [String? reason]) async {
     final uid = client.auth.currentUser!.id;
 
-    // get name BEFORE deletion
+    // get name and current quantity BEFORE updating
     String itemName = '';
+    int currentQty = 1;
     try {
       final inv = await client
           .from('inventory_items')
-          .select('name')
+          .select('name, quantity')
           .eq('id', itemId)
           .single();
       itemName = (inv['name'] as String?) ?? '';
+      currentQty = (inv['quantity'] as int?) ?? 1;
     } catch (_) {}
 
     final entry = {
@@ -216,8 +227,13 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     };
     await client.from('waste_logs').insert(entry);
 
-    // remove from inventory
-    await deleteInventoryItem(itemId);
+    // If only part of the quantity was wasted, reduce the inventory item's quantity;
+    // only delete the item if all units have been wasted.
+    if (currentQty > qty) {
+      await updateItemQuantity(itemId, currentQty - qty);
+    } else {
+      await deleteInventoryItem(itemId);
+    }
   }
 
   /// Delete a waste log by its id
@@ -225,19 +241,21 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     await client.from('waste_logs').delete().eq('id', id);
   }
 
-  /// Offer a donation FOR THIS USER (store item_name before deleting)
-  Future<void> offerDonation(String itemId, String recipientInfo) async {
+  /// Offer a donation FOR THIS USER (reduces quantity; deletes only if all units offered)
+  Future<void> offerDonation(String itemId, String recipientInfo, [int qty = 1]) async {
     final uid = client.auth.currentUser!.id;
 
-    // get name BEFORE deletion
+    // get name and current quantity BEFORE updating
     String itemName = '';
+    int currentQty = 1;
     try {
       final inv = await client
           .from('inventory_items')
-          .select('name')
+          .select('name, quantity')
           .eq('id', itemId)
           .single();
       itemName = (inv['name'] as String?) ?? '';
+      currentQty = (inv['quantity'] as int?) ?? 1;
     } catch (_) {}
 
     await client.from('donations').insert({
@@ -248,8 +266,40 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
       if (itemName.isNotEmpty) 'item_name': itemName, // denormalized
     });
 
-    // remove from inventory
-    await deleteInventoryItem(itemId);
+    if (currentQty > qty) {
+      await updateItemQuantity(itemId, currentQty - qty);
+    } else {
+      await deleteInventoryItem(itemId);
+    }
+  }
+
+  /// Update the quantity of an inventory item. If newQty <= 0, deletes the item.
+  Future<void> updateItemQuantity(String itemId, int newQty) async {
+    if (newQty <= 0) {
+      await deleteInventoryItem(itemId);
+    } else {
+      await client.from('inventory_items').update({'quantity': newQty}).eq('id', itemId);
+      _inventoryController.add(null);
+    }
+  }
+
+  /// Consume an inventory item by reducing its quantity (or deleting if all consumed).
+  Future<void> consumeItem(String itemId, [int qty = 1]) async {
+    int currentQty = 1;
+    try {
+      final inv = await client
+          .from('inventory_items')
+          .select('quantity')
+          .eq('id', itemId)
+          .single();
+      currentQty = (inv['quantity'] as int?) ?? 1;
+    } catch (_) {}
+
+    if (currentQty > qty) {
+      await updateItemQuantity(itemId, currentQty - qty);
+    } else {
+      await deleteInventoryItem(itemId);
+    }
   }
 
   /// Fetch only this user’s donations (prefer denormalized item_name)
@@ -270,6 +320,7 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
   // Delete an inventory item by its id
   Future<void> deleteInventoryItem(String id) async {
     await client.from('inventory_items').delete().eq('id', id);
+    _inventoryController.add(null);
   }
 
   /// Delete a donation by its id
@@ -377,21 +428,48 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
             fridge_id,
             role,
             joined_at,
-            profiles!fridge_users_user_id_fkey(full_name),
             fridges!fridge_users_fridge_id_fkey(name)
           ''')
           .inFilter('fridge_id', fridgeIds)
           .order('joined_at', ascending: false);
       
+      final items = List<Map<String, dynamic>>.from(data);
+      final userIds = items
+          .map((item) => item['user_id'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+
+      final Map<String, String> userNames = {};
+      if (userIds.isNotEmpty) {
+        try {
+          final profs = await client
+              .from('profiles')
+              .select('id, full_name')
+              .inFilter('id', userIds);
+          for (final p in List<Map<String, dynamic>>.from(profs)) {
+            final pid = p['id']?.toString();
+            final pname = p['full_name']?.toString();
+            if (pid != null && pname != null) {
+              userNames[pid] = pname;
+            }
+          }
+        } catch (e) {
+          debugPrint('Error fetching profiles for fridge members: $e');
+        }
+      }
+
       // Transform the data to flatten the nested objects
-      return List<Map<String, dynamic>>.from(data).map((item) {
+      return items.map((item) {
+        final uid = item['user_id']?.toString();
         return {
           'id': item['id'],
           'user_id': item['user_id'],
           'fridge_id': item['fridge_id'],
           'role': item['role'],
           'joined_at': item['joined_at'],
-          'user_name': item['profiles']?['full_name'] ?? 'Unknown User',
+          'user_name': (uid != null && userNames.containsKey(uid)) ? userNames[uid] : 'Unknown User',
           'fridge_name': item['fridges']?['name'] ?? 'Unknown Fridge',
         };
       }).toList();
@@ -425,15 +503,42 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           status,
           message,
           created_at,
-          profiles!fridge_requests_requester_id_fkey(full_name),
           fridges!fridge_requests_fridge_id_fkey(name)
         ''')
         .eq('status', 'pending')
         .inFilter('fridge_id', fridgeIds)
         .order('created_at', ascending: false);
     
+    final items = List<Map<String, dynamic>>.from(data);
+    final requesterIds = items
+        .map((item) => item['requester_id'] as String?)
+        .where((id) => id != null && id.isNotEmpty)
+        .cast<String>()
+        .toSet()
+        .toList();
+
+    final Map<String, String> userNames = {};
+    if (requesterIds.isNotEmpty) {
+      try {
+        final profs = await client
+            .from('profiles')
+            .select('id, full_name')
+            .inFilter('id', requesterIds);
+        for (final p in List<Map<String, dynamic>>.from(profs)) {
+          final pid = p['id']?.toString();
+          final pname = p['full_name']?.toString();
+          if (pid != null && pname != null) {
+            userNames[pid] = pname;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error fetching profiles for pending requests: $e');
+      }
+    }
+
     // Transform the data to flatten the nested objects
-    return List<Map<String, dynamic>>.from(data).map((item) {
+    return items.map((item) {
+      final reqId = item['requester_id']?.toString();
       return {
         'id': item['id'],
         'requester_id': item['requester_id'],
@@ -441,7 +546,7 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
         'status': item['status'],
         'message': item['message'],
         'created_at': item['created_at'],
-        'requester_name': item['profiles']?['full_name'] ?? 'Unknown User',
+        'requester_name': (reqId != null && userNames.containsKey(reqId)) ? userNames[reqId] : 'Unknown User',
         'fridge_name': item['fridges']?['name'] ?? 'Unknown Fridge',
       };
     }).toList();
@@ -555,48 +660,170 @@ Future<List<Map<String, dynamic>>> fetchConnectedFridges() async {
   }
 }
 
-  /// Fetch items in a given fridge
+  /// Get default/primary fridge ID for current user
+  Future<String?> getDefaultFridgeId() async {
+    try {
+      final fridges = await fetchConnectedFridges();
+      if (fridges.isNotEmpty) {
+        return fridges.first['id']?.toString();
+      }
+    } catch (e) {
+      debugPrint('Error getting default fridge: $e');
+    }
+    return null;
+  }
+
+  /// Backfill items with null fridge_id to the user's primary fridge
+  Future<void> ensureItemFridgeAssigned() async {
+    try {
+      final defaultFridgeId = await getDefaultFridgeId();
+      if (defaultFridgeId == null) return;
+      final uid = client.auth.currentUser?.id;
+      if (uid == null) return;
+
+      await client
+          .from('inventory_items')
+          .update({'fridge_id': defaultFridgeId})
+          .eq('user_id', uid)
+          .isFilter('fridge_id', null);
+    } catch (e) {
+      debugPrint('Error backfilling fridge items: $e');
+    }
+  }
+
+  /// Fetch dashboard summary metrics (Active Items, Expiring in <= 48h, Meals Shared)
+  Future<Map<String, int>> fetchDashboardStats() async {
+    try {
+      final items = await fetchInventory();
+      final now = DateTime.now();
+      int expiringSoon = 0;
+      for (final item in items) {
+        final exp = DateTime.tryParse(item['expiry_date'] as String? ?? '');
+        if (exp != null) {
+          final diff = exp.difference(now);
+          if (diff.inDays <= 2 && !diff.isNegative) {
+            expiringSoon++;
+          }
+        }
+      }
+      final donations = await fetchDonations();
+      return {
+        'activeItems': items.length,
+        'expiringSoon': expiringSoon,
+        'mealsShared': donations.length,
+      };
+    } catch (e) {
+      debugPrint('Error fetching dashboard stats: $e');
+      return {'activeItems': 0, 'expiringSoon': 0, 'mealsShared': 0};
+    }
+  }
+
+  /// Fetch items in a given fridge with resolved owner names
   Future<List<Map<String, dynamic>>> fetchFridgeItems(String fridgeId) async {
     try {
+      // Backfill any unassigned items first so fridge is populated
+      await ensureItemFridgeAssigned();
+
+      final currentUid = client.auth.currentUser?.id;
       final data = await client
           .from('inventory_items')
           .select('id, name, expiry_date, quantity, user_id, created_at')
           .eq('fridge_id', fridgeId)
           .order('expiry_date', ascending: true);
-      try {
-        return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      } catch (_) {
-        return [];
-      }
+      
+      final list = (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      return list.map((it) {
+        final ownerId = it['user_id'] as String?;
+        final isOwner = ownerId != null && ownerId == currentUid;
+        final ownerName = isOwner ? (activeLocalUserName ?? 'You') : 'Member';
+        return {
+          ...it,
+          'user_name': ownerName,
+        };
+      }).toList();
     } catch (e) {
       debugPrint('Error fetching fridge items: $e');
       return [];
     }
   }
 
-  /// Fetch members for a specific fridge
+  /// Fetch members for a specific fridge with accurate display names
   Future<List<Map<String, dynamic>>> fetchFridgeMembersForFridge(String fridgeId) async {
     try {
       final data = await client
           .from('fridge_users')
-          .select('id, user_id, role, joined_at, profiles!fridge_users_user_id_fkey(full_name)')
+          .select('id, user_id, role, joined_at')
           .eq('fridge_id', fridgeId)
           .order('joined_at', ascending: true);
-      try {
-        final list = (data as List).map((entry) {
-          final m = Map<String, dynamic>.from(entry as Map);
+      
+      final items = List<Map<String, dynamic>>.from(data);
+      final userIds = items
+          .map((m) => m['user_id'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+
+      final Map<String, String> userNames = {};
+      if (userIds.isNotEmpty) {
+        // 1. Try profiles
+        try {
+          final profs = await client
+              .from('profiles')
+              .select('id, full_name')
+              .inFilter('id', userIds);
+          for (final p in List<Map<String, dynamic>>.from(profs)) {
+            final pid = p['id']?.toString();
+            final pname = p['full_name']?.toString();
+            if (pid != null && pname != null && pname.isNotEmpty) {
+              userNames[pid] = pname;
+            }
+          }
+        } catch (e) {
+          debugPrint('Error fetching profiles: $e');
+        }
+
+        // 2. Try local_users for remaining unresolved IDs
+        final missingIds = userIds.where((id) => !userNames.containsKey(id)).toList();
+        if (missingIds.isNotEmpty) {
+          try {
+            final localUsrs = await client
+                .from('local_users')
+                .select('id, name')
+                .inFilter('id', missingIds);
+            for (final lu in List<Map<String, dynamic>>.from(localUsrs)) {
+              final lid = lu['id']?.toString();
+              final lname = lu['name']?.toString();
+              if (lid != null && lname != null && lname.isNotEmpty) {
+                userNames[lid] = lname;
+              }
+            }
+          } catch (e) {
+            debugPrint('Error fetching local_users for fridge members: $e');
+          }
+        }
+      }
+
+      final currentUid = client.auth.currentUser?.id;
+      final currentEmail = client.auth.currentUser?.email;
+
+      return items.map((m) {
+        final uid = m['user_id']?.toString();
+        String name = 'Member';
+        if (uid != null && userNames.containsKey(uid) && userNames[uid]!.isNotEmpty) {
+          name = userNames[uid]!;
+        } else if (uid != null && uid == currentUid) {
+          name = activeLocalUserName ?? (currentEmail?.split('@').first) ?? 'You';
+        }
+
         return {
           'id': m['id'],
           'user_id': m['user_id'],
           'role': m['role'],
           'joined_at': m['joined_at'],
-          'user_name': m['profiles']?['full_name'] ?? 'Unknown',
+          'user_name': name,
         };
-        }).toList();
-        return list;
-      } catch (_) {
-        return [];
-      }
+      }).toList();
     } catch (e) {
       debugPrint('Error fetching fridge members: $e');
       return [];
@@ -608,26 +835,49 @@ Future<List<Map<String, dynamic>>> fetchConnectedFridges() async {
     try {
       final data = await client
           .from('fridge_requests')
-          .select('id, requester_id, fridge_id, status, message, created_at, profiles!fridge_requests_requester_id_fkey(full_name)')
+          .select('id, requester_id, fridge_id, status, message, created_at')
           .eq('fridge_id', fridgeId)
           .eq('status', 'pending')
           .order('created_at', ascending: false);
-      try {
-        final list = (data as List).map((entry) {
-          final r = Map<String, dynamic>.from(entry as Map);
-          return {
-            'id': r['id'],
-            'requester_id': r['requester_id'],
-            'status': r['status'],
-            'message': r['message'],
-            'created_at': r['created_at'],
-            'requester_name': r['profiles']?['full_name'] ?? 'Unknown',
-          };
-        }).toList();
-        return list;
-      } catch (_) {
-        return [];
+
+      final items = List<Map<String, dynamic>>.from(data);
+      final reqIds = items
+          .map((r) => r['requester_id'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+
+      final Map<String, String> userNames = {};
+      if (reqIds.isNotEmpty) {
+        try {
+          final profs = await client
+              .from('profiles')
+              .select('id, full_name')
+              .inFilter('id', reqIds);
+          for (final p in List<Map<String, dynamic>>.from(profs)) {
+            final pid = p['id']?.toString();
+            final pname = p['full_name']?.toString();
+            if (pid != null && pname != null) {
+              userNames[pid] = pname;
+            }
+          }
+        } catch (e) {
+          debugPrint('Error fetching profiles: $e');
+        }
       }
+
+      return items.map((r) {
+        final rid = r['requester_id']?.toString();
+        return {
+          'id': r['id'],
+          'requester_id': r['requester_id'],
+          'status': r['status'],
+          'message': r['message'],
+          'created_at': r['created_at'],
+          'requester_name': (rid != null && userNames.containsKey(rid)) ? userNames[rid] : 'Unknown',
+        };
+      }).toList();
     } catch (e) {
       debugPrint('Error fetching fridge requests: $e');
       return [];

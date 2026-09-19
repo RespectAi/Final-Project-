@@ -7,7 +7,8 @@ import '../main.dart';
 
 class LocalUserGate extends StatefulWidget {
   final SupabaseService supa;
-  const LocalUserGate({super.key, required this.supa});
+  final VoidCallback? onUserSelected;
+  const LocalUserGate({super.key, required this.supa, this.onUserSelected});
 
   @override
   State<LocalUserGate> createState() => _LocalUserGateState();
@@ -43,7 +44,11 @@ class _LocalUserGateState extends State<LocalUserGate> {
       return;
     }
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
+    if (widget.onUserSelected != null) {
+      widget.onUserSelected!();
+    } else {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
+    }
   }
 
   Future<void> _continueAsAdmin() async {
@@ -81,7 +86,11 @@ class _LocalUserGateState extends State<LocalUserGate> {
       // Set admin mode and save context
       await widget.supa.setAdminMode();
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
+      if (widget.onUserSelected != null) {
+        widget.onUserSelected!();
+      } else {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage(supa: widget.supa)));
+      }
     } catch (e) {
       setState(() => _error = 'Invalid admin password');
     }

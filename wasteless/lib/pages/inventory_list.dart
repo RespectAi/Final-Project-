@@ -172,7 +172,7 @@ class InventoryListState extends State<InventoryList> {
               }
 
               return ListView.builder(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 90),
                 itemCount: items.length,
                 itemBuilder: (_, i) {
                   final item = items[i];

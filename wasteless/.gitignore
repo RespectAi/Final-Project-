@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Tool artifacts and debug outputs
+.playwright-mcp/
+swark-output/
+*.png

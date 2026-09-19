@@ -597,7 +597,7 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                     nameController.text.trim(),
                     passController.text,
                   );
-                  Navigator.pop(context);
+                  if (Navigator.of(context).canPop()) Navigator.pop(context);
                   _refreshData();
                   
                   // If this was the first local user created, redirect to local user gate
@@ -608,6 +608,7 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                     Navigator.of(context).pushReplacementNamed('/local-user');
                   }
                 } catch (e) {
+                  if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error: $e')),
                   );
@@ -666,9 +667,11 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
                   if (passController.text.isNotEmpty) {
                     await widget.supa.updateLocalUserPassword(user['id'], passController.text);
                   }
-                  Navigator.pop(context);
+                  if (Navigator.of(context).canPop()) Navigator.pop(context);
+                  if (!mounted) return;
                   _refreshData();
                 } catch (e) {
+                  if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error: $e')),
                   );
@@ -697,9 +700,11 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
             onPressed: () async {
               try {
                 await widget.supa.deleteLocalUser(user['id']);
-                Navigator.pop(context);
+                if (Navigator.of(context).canPop()) Navigator.pop(context);
+                if (!mounted) return;
                 _refreshData();
               } catch (e) {
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Error: $e')),
                 );
@@ -717,8 +722,10 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
   void _promoteUser(Map<String, dynamic> member) async {
     try {
       await widget.supa.promoteUser(member['user_id'], member['fridge_id']);
+      if (!mounted) return;
       _refreshData();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -728,8 +735,10 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
   void _demoteUser(Map<String, dynamic> member) async {
     try {
       await widget.supa.demoteUser(member['user_id'], member['fridge_id']);
+      if (!mounted) return;
       _refreshData();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -739,8 +748,10 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
   void _removeUser(Map<String, dynamic> member) async {
     try {
       await widget.supa.removeUserFromFridge(member['user_id'], member['fridge_id']);
+      if (!mounted) return;
       _refreshData();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -750,8 +761,10 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
   void _approveRequest(Map<String, dynamic> request) async {
     try {
       await widget.supa.approveJoinRequest(request['id']);
+      if (!mounted) return;
       _refreshData();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -761,8 +774,10 @@ class _UserPageState extends State<UserPage> with TickerProviderStateMixin {
   void _rejectRequest(Map<String, dynamic> request) async {
     try {
       await widget.supa.rejectJoinRequest(request['id']);
+      if (!mounted) return;
       _refreshData();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );

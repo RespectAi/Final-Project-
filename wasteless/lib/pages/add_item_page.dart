@@ -17,8 +17,13 @@ class _AddItemPageState extends State<AddItemPage> {
   final Set<String> _selectedCatIds = {};
   final _formKey = GlobalKey<FormState>();
 
+  // Fridge selection
+  List<Map<String, dynamic>> _fridges = [];
+  String? _selectedFridgeId;
+
   // Form state
   String _name = '';
+  final TextEditingController _nameController = TextEditingController();
   DateTime _expiry = DateTime.now().add(const Duration(days: 7));
   int _quantity = 1;
   int _remindDays = 1;
@@ -28,7 +33,7 @@ class _AddItemPageState extends State<AddItemPage> {
   final List<Map<String, dynamic>> _items = [];
   bool _isAddingMultiple = false;
 
-  // Focus nodes for keyboard "Enter -> next" behavior
+  // Focus nodes
   final FocusNode _nameFocus = FocusNode();
   final FocusNode _quantityFocus = FocusNode();
   final FocusNode _remindDaysFocus = FocusNode();
@@ -38,17 +43,72 @@ class _AddItemPageState extends State<AddItemPage> {
   final TextEditingController _remindDaysController = TextEditingController(text: '1');
   final TextEditingController _remindHoursController = TextEditingController(text: '0');
 
-  // Loading flag to prevent double submits and show spinner in button
   bool _loading = false;
-
-  // Cache for all categories
   List<Map<String, dynamic>> _categoriesCache = [];
+
+  // Common food typo corrections (soft spellcheck)
+  static const Map<String, String> _commonFoodCorrections = {
+    'tomatos': 'Tomatoes',
+    'tomatoe': 'Tomatoes',
+    'tomato': 'Tomato',
+    'potatos': 'Potatoes',
+    'potatoe': 'Potatoes',
+    'potato': 'Potato',
+    'bannana': 'Banana',
+    'bananna': 'Banana',
+    'bannanas': 'Bananas',
+    'banana': 'Banana',
+    'bananas': 'Bananas',
+    'chese': 'Cheese',
+    'cheeze': 'Cheese',
+    'bread': 'Bread',
+    'breadd': 'Bread',
+    'milke': 'Milk',
+    'mlik': 'Milk',
+    'yougurt': 'Yogurt',
+    'yogert': 'Yogurt',
+    'yoghurt': 'Yogurt',
+    'egges': 'Eggs',
+    'aple': 'Apple',
+    'aples': 'Apples',
+    'orange': 'Orange',
+    'oragnes': 'Oranges',
+    'chikcen': 'Chicken',
+    'chiken': 'Chicken',
+    'beef': 'Beef',
+    'fsh': 'Fish',
+    'fiish': 'Fish',
+    'onoin': 'Onion',
+    'onoins': 'Onions',
+    'onions': 'Onions',
+    'carot': 'Carrot',
+    'carrots': 'Carrots',
+    'lettuce': 'Lettuce',
+    'letuce': 'Lettuce',
+    'butter': 'Butter',
+    'buter': 'Butter',
+    'garlic': 'Garlic',
+    'garilc': 'Garlic',
+    'ginger': 'Ginger',
+    'gingre': 'Ginger',
+    'rice': 'Rice',
+    'riice': 'Rice',
+    'pasta': 'Pasta',
+    'spaghetti': 'Spaghetti',
+    'spagetti': 'Spaghetti',
+    'cereal': 'Cereal',
+    'cerial': 'Cereal',
+    'flour': 'Flour',
+    'suger': 'Sugar',
+    'suggar': 'Sugar',
+  };
 
   @override
   void initState() {
     super.initState();
     _allCats = widget.supa.fetchCategories();
     _loadCategories();
+    _loadFridges();
   }
 
   Future<void> _loadCategories() async {
@@ -56,8 +116,25 @@ class _AddItemPageState extends State<AddItemPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _loadFridges() async {
+    try {
+      final fridges = await widget.supa.fetchConnectedFridges();
+      if (mounted) {
+        setState(() {
+          _fridges = fridges;
+          if (_fridges.isNotEmpty) {
+            _selectedFridgeId = _fridges.first['id']?.toString();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading fridges: $e');
+    }
+  }
+
   @override
   void dispose() {
+    _nameController.dispose();
     _nameFocus.dispose();
     _quantityFocus.dispose();
     _remindDaysFocus.dispose();
@@ -65,6 +142,20 @@ class _AddItemPageState extends State<AddItemPage> {
     _remindDaysController.dispose();
     _remindHoursController.dispose();
     super.dispose();
+  }
+
+  /// Soft spellcheck: auto-corrects high confidence food typos, allows all traditional foods
+  String _applySoftSpellcheck(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return trimmed;
+
+    final lower = trimmed.toLowerCase();
+    if (_commonFoodCorrections.containsKey(lower)) {
+      return _commonFoodCorrections[lower]!;
+    }
+
+    // Capitalize first letter of traditional / custom food name
+    return trimmed[0].toUpperCase() + trimmed.substring(1);
   }
 
   /// Get the maximum allowed days from selected categories
@@ -101,7 +192,7 @@ class _AddItemPageState extends State<AddItemPage> {
     }
     final maxDays = _getMaxAllowedDays();
     if (maxDays == null) {
-      return null; // No limit set for any selected category
+      return null;
     }
     if (_remindDays > maxDays) {
       return 'Cannot exceed $maxDays day(s)';
@@ -130,7 +221,6 @@ class _AddItemPageState extends State<AddItemPage> {
       return;
     }
 
-    // Check reminder days limit
     if (_isReminderDaysExceeded()) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Reminder days cannot exceed ${_getMaxAllowedDays()} day(s) for selected categories')),
@@ -138,7 +228,6 @@ class _AddItemPageState extends State<AddItemPage> {
       return;
     }
 
-    // Check reminder hours limit
     if (_getHoursError() != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_getHoursError()!)),
@@ -148,18 +237,24 @@ class _AddItemPageState extends State<AddItemPage> {
 
     _formKey.currentState!.save();
 
+    final rawName = _nameController.text.trim();
+    final correctedName = _applySoftSpellcheck(rawName);
+    final wasTypoFixed = correctedName.toLowerCase() != rawName.toLowerCase();
+
     setState(() {
       _items.add({
-        'name': _name,
+        'name': correctedName,
+        'originalName': rawName,
         'expiry': _expiry,
         'quantity': _quantity,
         'reminderDaysBefore': _remindDays,
         'reminderHoursBefore': _remindHours,
         'categoryIds': _selectedCatIds.toList(),
+        'fridgeId': _selectedFridgeId,
       });
 
-      // Reset form for next item
-      _formKey.currentState!.reset();
+      // Reset input fields for next item
+      _nameController.clear();
       _name = '';
       _expiry = DateTime.now().add(const Duration(days: 7));
       _quantity = 1;
@@ -170,7 +265,28 @@ class _AddItemPageState extends State<AddItemPage> {
       _selectedCatIds.clear();
     });
 
-    showCornerToast(context, message: 'Item added to list (${_items.length})');
+    if (wasTypoFixed) {
+      final addedIndex = _items.length - 1;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Corrected to "$correctedName"'),
+          action: SnackBarAction(
+            label: 'UNDO',
+            textColor: Colors.amberAccent,
+            onPressed: () {
+              if (mounted && addedIndex < _items.length) {
+                setState(() {
+                  _items[addedIndex]['name'] = rawName;
+                });
+              }
+            },
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } else {
+      showCornerToast(context, message: 'Item added to list (${_items.length})');
+    }
   }
 
   void _removeFromList(int index) {
@@ -180,10 +296,8 @@ class _AddItemPageState extends State<AddItemPage> {
   }
 
   Future<void> _submit() async {
-    // If already submitting, ignore
     if (_loading) return;
 
-    // In single mode, validate and add current item
     if (!_isAddingMultiple) {
       if (!_formKey.currentState!.validate()) return;
 
@@ -194,7 +308,6 @@ class _AddItemPageState extends State<AddItemPage> {
         return;
       }
 
-      // Check reminder days limit
       if (_isReminderDaysExceeded()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Reminder days cannot exceed ${_getMaxAllowedDays()} day(s) for selected categories')),
@@ -202,7 +315,6 @@ class _AddItemPageState extends State<AddItemPage> {
         return;
       }
 
-      // Check reminder hours limit
       if (_getHoursError() != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_getHoursError()!)),
@@ -212,16 +324,20 @@ class _AddItemPageState extends State<AddItemPage> {
 
       _formKey.currentState!.save();
 
+      final rawName = _nameController.text.trim();
+      final correctedName = _applySoftSpellcheck(rawName);
+
       setState(() => _loading = true);
 
       try {
         await widget.supa.addItem(
-          name: _name,
+          name: correctedName,
           expiry: _expiry,
           quantity: _quantity,
           reminderDaysBefore: _remindDays,
           reminderHoursBefore: _remindHours,
           categoryIds: _selectedCatIds.toList(),
+          fridgeId: _selectedFridgeId,
         );
 
         if (!mounted) return;
@@ -237,7 +353,7 @@ class _AddItemPageState extends State<AddItemPage> {
         if (mounted) setState(() => _loading = false);
       }
     } else {
-      // Multi-item mode: submit all items in the list
+      // Multi-item mode: submit all staged items
       if (_items.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please add at least one item to the list')),
@@ -248,7 +364,7 @@ class _AddItemPageState extends State<AddItemPage> {
       setState(() => _loading = true);
 
       try {
-        await widget.supa.addMultipleItems(_items);
+        await widget.supa.addMultipleItems(_items, _selectedFridgeId);
 
         if (!mounted) return;
         Navigator.of(context).pop(true);
@@ -274,505 +390,472 @@ class _AddItemPageState extends State<AddItemPage> {
     final isReminderInvalid = isReminderDaysInvalid || isReminderHoursInvalid;
 
     return Scaffold(
-      appBar: gradientAppBar(_isAddingMultiple ? 'Add Multiple Items' : 'Add Inventory Item'),
-      body: Column(
-        children: [
-          // Mode toggle
-          Padding(
+      appBar: buildGradientAppBar(
+        context,
+        _isAddingMultiple ? 'Add Multiple Items' : 'Add Inventory Item',
+        showBackIfCanPop: true,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isSmall = constraints.maxWidth < 700;
+
+          return Column(
+            children: [
+              // Mode toggle (Single vs Multiple)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
+                  children: [
+                    const Text('Mode:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SegmentedButton<bool>(
+                        segments: [
+                          const ButtonSegment(value: false, label: Text('Single Item'), icon: Icon(Icons.add_circle_outline)),
+                          ButtonSegment(
+                            value: true,
+                            label: Text(_items.isNotEmpty ? 'Multiple (${_items.length})' : 'Multiple Items'),
+                            icon: const Icon(Icons.library_add),
+                          ),
+                        ],
+                        selected: {_isAddingMultiple},
+                        onSelectionChanged: (Set<bool> selection) {
+                          setState(() {
+                            _isAddingMultiple = selection.first;
+                            // NOTE: We deliberately do NOT clear _items here so user progress is never lost!
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Responsive Layout
+              Expanded(
+                child: isSmall
+                    ? _buildMobileFormAndReview(isReminderInvalid)
+                    : _buildDesktopFormAndList(isReminderInvalid),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // ---------- Mobile Layout (Full-Width Form with Review Section) ----------
+  Widget _buildMobileFormAndReview(bool isReminderInvalid) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _buildFormFields(isReminderInvalid),
+
+        // If in Multiple Items mode, show staged items cleanly below
+        if (_isAddingMultiple) ...[
+          const SizedBox(height: 24),
+          _buildStagedItemsSection(),
+        ],
+      ],
+    );
+  }
+
+  // ---------- Desktop Layout (Side-by-Side) ----------
+  Widget _buildDesktopFormAndList(bool isReminderInvalid) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 3,
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                const Text('Mode:', style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(value: false, label: Text('Single Item'), icon: Icon(Icons.add_circle_outline)),
-                      ButtonSegment(value: true, label: Text('Multiple Items'), icon: Icon(Icons.library_add)),
-                    ],
-                    selected: {_isAddingMultiple},
-                    onSelectionChanged: (Set<bool> selection) {
-                      setState(() {
-                        _isAddingMultiple = selection.first;
-                        // Clear list when switching modes
-                        if (!_isAddingMultiple) {
-                          _items.clear();
-                        }
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
+            child: _buildFormFields(isReminderInvalid),
           ),
-
+        ),
+        if (_isAddingMultiple)
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Left side: Form
-                Expanded(
-                  flex: 2,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Item name
-                          TextFormField(
-                            focusNode: _nameFocus,
-                            textInputAction: TextInputAction.next,
-                            decoration: const InputDecoration(labelText: 'Item Name'),
-                            onSaved: (v) => _name = v!.trim(),
-                            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-                            onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_quantityFocus),
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Quantity
-                          TextFormField(
-                            focusNode: _quantityFocus,
-                            textInputAction: TextInputAction.next,
-                            decoration: const InputDecoration(labelText: 'Quantity'),
-                            keyboardType: TextInputType.number,
-                            initialValue: '1',
-                            onSaved: (v) => _quantity = int.tryParse(v ?? '1') ?? 1,
-                            validator: (v) {
-                              if (v == null) return 'Required';
-                              final n = int.tryParse(v);
-                              if (n == null || n < 1) return 'Enter a positive number';
-                              return null;
-                            },
-                            onFieldSubmitted: (_) {
-                              // Move focus to categories section (no specific focus node, so just unfocus)
-                              FocusScope.of(context).unfocus();
-                            },
-                          ),
-
-                          const SizedBox(height: 16),
-                          
-                          // Categories section (NOW FIRST, before reminders)
-                          FutureBuilder<List<Map<String, dynamic>>>(
-                            future: _allCats,
-                            builder: (ctx, snap) {
-                              if (snap.connectionState == ConnectionState.waiting) {
-                                return const Center(child: CircularProgressIndicator());
-                              }
-                              if (snap.hasError) return Text('Error loading categories: ${snap.error}');
-                              final cats = snap.data ?? [];
-                              if (cats.isEmpty) return const Text('No categories found');
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Category (required)', style: TextStyle(fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: cats.map((c) {
-                                      final id = c['id'] as String;
-                                      final name = c['name'] as String;
-                                      final url = c['icon_url'] as String?;
-                                      final selected = _selectedCatIds.contains(id);
-                                      final int? defaultDays = c['default_expiry_days'] as int?;
-                                      return ChoiceChip(
-                                        label: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            if (url != null && url.isNotEmpty)
-                                              Image.network(url, width: 20, height: 20)
-                                            else
-                                              const Icon(Icons.eco, size: 18),
-                                            const SizedBox(width: 8),
-                                            Text(name),
-                                            if (defaultDays != null) ...[
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                '($defaultDays d)',
-                                                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                        selected: selected,
-                                        onSelected: (sel) {
-                                          setState(() {
-                                            if (sel) {
-                                              _selectedCatIds.add(id);
-                                              if (defaultDays != null && defaultDays > 0) {
-                                                _expiry = DateTime.now().add(Duration(days: defaultDays));
-                                                // Adjust reminder if it exceeds new category limit
-                                                final maxDays = _getMaxAllowedDays();
-                                                if (maxDays != null && _remindDays > maxDays) {
-                                                  _remindDays = maxDays;
-                                                  _remindDaysController.text = maxDays.toString();
-                                                }
-                                              }
-                                            } else {
-                                              _selectedCatIds.remove(id);
-                                              // Revalidate after removing category
-                                              final maxDays = _getMaxAllowedDays();
-                                              if (maxDays != null && _remindDays > maxDays) {
-                                                _remindDays = maxDays;
-                                                _remindDaysController.text = maxDays.toString();
-                                              }
-                                            }
-                                          });
-                                        },
-                                      );
-                                    }).toList(),
-                                  ),
-                                  if (_selectedCatIds.isEmpty)
-                                    const Padding(
-                                      padding: EdgeInsets.only(top: 8.0),
-                                      child: Text(
-                                        'Please select at least one category',
-                                        style: TextStyle(color: Colors.redAccent, fontSize: 12),
-                                      ),
-                                    ),
-                                  if (_selectedCatIds.isNotEmpty && _getMaxAllowedDays() != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 8.0),
-                                      child: Text(
-                                        'Max reminder: ${_getMaxAllowedDays()} day(s) for selected categories',
-                                        style: TextStyle(
-                                          color: Colors.blue[700],
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              );
-                            },
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Reminder days and hours (NOW AFTER CATEGORIES)
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _remindDaysController,
-                                  focusNode: _remindDaysFocus,
-                                  textInputAction: TextInputAction.next,
-                                  decoration: InputDecoration(
-                                    labelText: 'Remind (days before expiry)',
-                                    labelStyle: TextStyle(
-                                      color: isReminderDaysInvalid ? Colors.red : null,
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: isReminderDaysInvalid ? Colors.red : Colors.black12,
-                                        width: isReminderDaysInvalid ? 2 : 1,
-                                      ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: isReminderDaysInvalid ? Colors.red : Theme.of(context).primaryColor,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    errorBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: Colors.red, width: 2),
-                                    ),
-                                    focusedErrorBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: Colors.red, width: 2),
-                                    ),
-                                    errorText: isReminderDaysInvalid ? reminderDaysError : null,
-                                    errorStyle: const TextStyle(
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  style: TextStyle(
-                                    color: isReminderDaysInvalid ? Colors.red : Colors.black,
-                                    fontWeight: isReminderDaysInvalid ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                  onChanged: (v) {
-                                    setState(() {
-                                      _remindDays = int.tryParse(v) ?? 1;
-                                      // When days change, validate hours don't exceed the daily limit
-                                      final maxHours = _remindDays * 24;
-                                      if (_remindHours > maxHours) {
-                                        _remindHours = maxHours;
-                                        _remindHoursController.text = maxHours.toString();
-                                      }
-                                    });
-                                  },
-                                  onSaved: (v) => _remindDays = int.tryParse(v ?? '1') ?? 1,
-                                  onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindHoursFocus),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _remindHoursController,
-                                  focusNode: _remindHoursFocus,
-                                  textInputAction: TextInputAction.done,
-                                  decoration: InputDecoration(
-                                    labelText: 'Remind (hours)',
-                                    labelStyle: TextStyle(
-                                      color: isReminderHoursInvalid ? Colors.red : null,
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: isReminderHoursInvalid ? Colors.red : Colors.black12,
-                                        width: isReminderHoursInvalid ? 2 : 1,
-                                      ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: isReminderHoursInvalid ? Colors.red : Theme.of(context).primaryColor,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    errorBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: Colors.red, width: 2),
-                                    ),
-                                    focusedErrorBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: Colors.red, width: 2),
-                                    ),
-                                    errorText: isReminderHoursInvalid ? hoursError : null,
-                                    errorStyle: const TextStyle(
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  style: TextStyle(
-                                    color: isReminderHoursInvalid ? Colors.red : Colors.black,
-                                    fontWeight: isReminderHoursInvalid ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                  onChanged: (v) {
-                                    setState(() {
-                                      _remindHours = int.tryParse(v) ?? 0;
-                                    });
-                                  },
-                                  onSaved: (v) => _remindHours = int.tryParse(v ?? '0') ?? 0,
-                                  onFieldSubmitted: (_) {
-                                    if (_isAddingMultiple && !isReminderInvalid) {
-                                      _addToList();
-                                    } else if (!isReminderInvalid) {
-                                      _submit();
-                                    }
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text('Expiry: ${_expiry.toLocal().toIso8601String().split('T')[0]}'),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.calendar_today),
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: _expiry,
-                                    firstDate: DateTime.now(),
-                                    lastDate: DateTime.now().add(const Duration(days: 365)),
-                                  );
-                                  if (picked != null) {
-                                    setState(() {
-                                      _expiry = picked;
-                                      // Custom date overrides category default, but validate against max allowed
-                                      final maxDays = _getMaxAllowedDays();
-                                      if (maxDays != null) {
-                                        final categoryExpiry = DateTime.now().add(Duration(days: maxDays));
-                                        // If custom date exceeds category limit, cap it
-                                        if (_expiry.isAfter(categoryExpiry)) {
-                                          _expiry = categoryExpiry;
-                                          showCornerToast(
-                                            context,
-                                            message: 'Expiry date capped to category limit ($maxDays days)',
-                                          );
-                                        }
-                                      }
-                                    });
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Action buttons
-                          if (_isAddingMultiple)
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: isReminderInvalid ? null : _addToList,
-                                icon: const Icon(Icons.playlist_add),
-                                label: const Text('Add to List'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isReminderInvalid ? Colors.grey : null,
-                                ),
-                              ),
-                            )
-                          else
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: (_loading || isReminderInvalid) ? null : _submit,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isReminderInvalid ? Colors.grey : null,
-                                ),
-                                child: _loading
-                                    ? const Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                            ),
-                                          ),
-                                          SizedBox(width: 12),
-                                          Text('Adding...'),
-                                        ],
-                                      )
-                                    : const Text('Add Item'),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Right side: Items list (only in multiple mode)
-                if (_isAddingMultiple)
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        border: Border(left: BorderSide(color: Colors.grey[300]!)),
-                      ),
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.list_alt, size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Items List (${_items.length})',
-                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: _items.isEmpty
-                                ? Center(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                          'No items yet',
-                                          style: TextStyle(color: Colors.grey[600]),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Fill the form and tap\n"Add to List"',
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    padding: const EdgeInsets.all(8),
-                                    itemCount: _items.length,
-                                    itemBuilder: (_, i) {
-                                      final item = _items[i];
-                                      return Card(
-                                        child: ListTile(
-                                          leading: CircleAvatar(
-                                            backgroundColor: Colors.green[100],
-                                            child: Text('${i + 1}'),
-                                          ),
-                                          title: Text(
-                                            item['name'],
-                                            style: const TextStyle(fontWeight: FontWeight.w600),
-                                          ),
-                                          subtitle: Text(
-                                            'Qty: ${item['quantity']} • Expiry: ${(item['expiry'] as DateTime).toLocal().toString().split(' ')[0]}\n'
-                                            'Remind: ${item['reminderDaysBefore']}d ${item['reminderHoursBefore']}h before',
-                                          ),
-                                          isThreeLine: true,
-                                          trailing: IconButton(
-                                            icon: const Icon(Icons.close, color: Colors.red),
-                                            onPressed: () => _removeFromList(i),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ),
-                          if (_items.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border(top: BorderSide(color: Colors.grey[300]!)),
-                              ),
-                              child: SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: _loading ? null : _submit,
-                                  icon: const Icon(Icons.check_circle),
-                                  label: _loading
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                          ),
-                                        )
-                                      : Text('Submit All (${_items.length})'),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
+            flex: 2,
+            child: Container(
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey[200]!),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2)),
+                ],
+              ),
+              child: _buildStagedItemsSection(),
             ),
           ),
+      ],
+    );
+  }
+
+  // ---------- Form Fields ----------
+  Widget _buildFormFields(bool isReminderInvalid) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Target Fridge Selector
+          if (_fridges.length > 1) ...[
+            DropdownButtonFormField<String>(
+              value: _selectedFridgeId,
+              decoration: const InputDecoration(
+                labelText: 'Target Fridge',
+                prefixIcon: Icon(Icons.kitchen_outlined),
+              ),
+              items: _fridges.map((f) {
+                return DropdownMenuItem<String>(
+                  value: f['id']?.toString(),
+                  child: Text(f['name'] as String? ?? 'Fridge'),
+                );
+              }).toList(),
+              onChanged: (val) => setState(() => _selectedFridgeId = val),
+            ),
+            const SizedBox(height: 12),
+          ] else if (_fridges.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.teal.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.teal.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.kitchen, size: 18, color: Colors.teal),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Fridge: ${_fridges.first['name'] ?? 'Main Fridge'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.teal, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Item name input
+          TextFormField(
+            controller: _nameController,
+            focusNode: _nameFocus,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              labelText: 'Item Name',
+              prefixIcon: Icon(Icons.fastfood_outlined),
+              hintText: 'e.g. Tomatoes, Milk, Bread, Jollof Rice',
+            ),
+            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+            onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_quantityFocus),
+          ),
+          const SizedBox(height: 12),
+
+          // Quantity
+          TextFormField(
+            focusNode: _quantityFocus,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              labelText: 'Quantity',
+              prefixIcon: Icon(Icons.numbers),
+            ),
+            keyboardType: TextInputType.number,
+            initialValue: '1',
+            onSaved: (v) => _quantity = int.tryParse(v ?? '1') ?? 1,
+            validator: (v) {
+              if (v == null) return 'Required';
+              final n = int.tryParse(v);
+              if (n == null || n < 1) return 'Enter a positive number';
+              return null;
+            },
+            onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
+          ),
+          const SizedBox(height: 16),
+
+          // Categories section (With overflow-safe wrapping)
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _allCats,
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) return Text('Error loading categories: ${snap.error}');
+              final cats = snap.data ?? [];
+              if (cats.isEmpty) return const Text('No categories found');
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Category (required)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: cats.map((c) {
+                      final id = c['id'] as String;
+                      final name = c['name'] as String;
+                      final url = c['icon_url'] as String?;
+                      final selected = _selectedCatIds.contains(id);
+                      final int? defaultDays = c['default_expiry_days'] as int?;
+
+                      return ChoiceChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (url != null && url.isNotEmpty)
+                              Image.network(url, width: 18, height: 18, errorBuilder: (_, __, ___) => const Icon(Icons.eco, size: 16))
+                            else
+                              const Icon(Icons.eco, size: 16),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (defaultDays != null) ...[
+                              const SizedBox(width: 4),
+                              Text(
+                                '($defaultDays d)',
+                                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                              ),
+                            ],
+                          ],
+                        ),
+                        selected: selected,
+                        onSelected: (val) {
+                          setState(() {
+                            if (val) {
+                              _selectedCatIds.add(id);
+                              if (defaultDays != null) {
+                                _expiry = DateTime.now().add(Duration(days: defaultDays));
+                              }
+                            } else {
+                              _selectedCatIds.remove(id);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Reminders
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _remindDaysController,
+                  focusNode: _remindDaysFocus,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(labelText: 'Remind (days before)'),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) {
+                    setState(() {
+                      _remindDays = int.tryParse(v) ?? 1;
+                    });
+                  },
+                  onSaved: (v) => _remindDays = int.tryParse(v ?? '1') ?? 1,
+                  onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remindHoursFocus),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextFormField(
+                  controller: _remindHoursController,
+                  focusNode: _remindHoursFocus,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(labelText: 'Remind (hours)'),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) {
+                    setState(() {
+                      _remindHours = int.tryParse(v) ?? 0;
+                    });
+                  },
+                  onSaved: (v) => _remindHours = int.tryParse(v ?? '0') ?? 0,
+                  onFieldSubmitted: (_) {
+                    if (_isAddingMultiple && !isReminderInvalid) {
+                      _addToList();
+                    } else if (!isReminderInvalid) {
+                      _submit();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Expiry date selector
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Expiry: ${_expiry.toLocal().toIso8601String().split('T')[0]}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_today, size: 16),
+                label: const Text('Change Date'),
+                onPressed: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _expiry,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) {
+                    setState(() => _expiry = picked);
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Form Action Buttons
+          if (_isAddingMultiple)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: isReminderInvalid ? null : _addToList,
+                icon: const Icon(Icons.playlist_add),
+                label: const Text('Add to List'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isReminderInvalid ? Colors.grey : const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: (_loading || isReminderInvalid) ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isReminderInvalid ? Colors.grey : const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: _loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator.adaptive(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)),
+                      )
+                    : const Text('Add Item', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  // ---------- Staged Items Section (Full Width, No Letter-by-Letter Squishing) ----------
+  Widget _buildStagedItemsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.list_alt, size: 20, color: Color(0xFF2E7D32)),
+              const SizedBox(width: 8),
+              Text(
+                'Staged Items (${_items.length})',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              const Spacer(),
+              if (_items.isNotEmpty)
+                ElevatedButton.icon(
+                  onPressed: _loading ? null : _submit,
+                  icon: const Icon(Icons.check, size: 16),
+                  label: _loading
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator.adaptive(strokeWidth: 2))
+                      : Text('Submit All (${_items.length})'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00B074),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        if (_items.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(28),
+            alignment: Alignment.center,
+            child: Column(
+              children: [
+                Icon(Icons.inbox_outlined, size: 48, color: Colors.grey[400]),
+                const SizedBox(height: 10),
+                Text(
+                  'No items in list yet',
+                  style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Fill the form above and tap "Add to List"',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
+              ],
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(8),
+            itemCount: _items.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 6),
+            itemBuilder: (_, i) {
+              final item = _items[i];
+              return Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFDEF7EC),
+                    child: Text(
+                      '${i + 1}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF046C4E)),
+                    ),
+                  ),
+                  title: Text(
+                    item['name'],
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
+                  subtitle: Text(
+                    'Qty: ${item['quantity']} • Expiry: ${(item['expiry'] as DateTime).toLocal().toString().split(' ')[0]}\n'
+                    'Remind: ${item['reminderDaysBefore']}d ${item['reminderHoursBefore']}h before',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  isThreeLine: true,
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    onPressed: () => _removeFromList(i),
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
     );
   }
 }
