@@ -22,6 +22,7 @@ import 'pages/categories_page.dart';
 import 'pages/fridges_page.dart';
 import 'pages/reset_password_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/constants/app_colors.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -229,8 +230,27 @@ class _HomePageState extends State<HomePage> {
       supa: widget.supa,
       onNavigateToTab: (idx) => setState(() => _currentIndex = idx),
     ), // 0
-    InventoryList(key: _invKey, supa: widget.supa), // 1
-    WasteLogPage(key: _wasteKey, supa: widget.supa), // 2
+    InventoryList(
+      key: _invKey,
+      supa: widget.supa,
+      onSelectionChanged: () {
+        if (mounted) setState(() {});
+      },
+      onBackToHome: () {
+        _saveTabIndex(0);
+        setState(() => _currentIndex = 0);
+        _dashKey.currentState?.refresh();
+      },
+    ), // 1
+    WasteLogPage(
+      key: _wasteKey,
+      supa: widget.supa,
+      onBackToHome: () {
+        _saveTabIndex(0);
+        setState(() => _currentIndex = 0);
+        _dashKey.currentState?.refresh();
+      },
+    ), // 2
     DonationPage(key: _donKey, supa: widget.supa),   // 3
   ];
 
@@ -273,8 +293,8 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Only Dashboard has its own custom greeting header; other tabs use standard gradient app bar
-      appBar: (_currentIndex == 0)
+      // Dashboard, Inventory, and Waste Log have their own custom headers; other tabs use standard gradient app bar
+      appBar: (_currentIndex == 0 || _currentIndex == 1 || _currentIndex == 2)
           ? null
           : buildGradientAppBar(
               context,
@@ -282,8 +302,11 @@ class _HomePageState extends State<HomePage> {
               showBackIfCanPop: false,
             ),
       body: IndexedStack(index: _currentIndex, children: _pages),
-      floatingActionButton: _currentIndex == 1
+      floatingActionButton: (_currentIndex == 1 && !(_invKey.currentState?.isSelectionActive ?? false))
           ? FloatingActionButton(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 4,
               child: const Icon(Icons.add),
               onPressed: () {
                 Navigator.pushNamed(context, AddItemPage.route).then((_) {
