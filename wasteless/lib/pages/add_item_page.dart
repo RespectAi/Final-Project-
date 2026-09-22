@@ -22,7 +22,6 @@ class _AddItemPageState extends State<AddItemPage> {
   String? _selectedFridgeId;
 
   // Form state
-  String _name = '';
   final TextEditingController _nameController = TextEditingController();
   DateTime _expiry = DateTime.now().add(const Duration(days: 7));
   int _quantity = 1;
@@ -255,7 +254,6 @@ class _AddItemPageState extends State<AddItemPage> {
 
       // Reset input fields for next item
       _nameController.clear();
-      _name = '';
       _expiry = DateTime.now().add(const Duration(days: 7));
       _quantity = 1;
       _remindDays = 1;

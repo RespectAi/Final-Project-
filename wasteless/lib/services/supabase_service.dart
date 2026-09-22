@@ -1,72 +1,97 @@
 // lib/services/supabase_service.dart
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:crypto/crypto.dart' as crypto;
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/timezone.dart' as tz;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/category.dart';
+import '../models/donation_item.dart';
+import '../models/fridge.dart';
+import '../models/fridge_member.dart';
+import '../models/inventory_item.dart';
+import '../models/join_request.dart';
+import '../models/local_user.dart';
+import '../models/waste_log.dart';
+import 'auth_user_service.dart';
+import 'fridge_service.dart';
+import 'inventory_service.dart';
+import 'notification_service.dart';
+import 'waste_donation_service.dart';
+
+/// Unifying Facade for all WasteLess backend & local services.
+///
+/// Delegates focused domain operations to:
+/// - [NotificationService]
+/// - [InventoryService]
+/// - [FridgeService]
+/// - [WasteDonationService]
+/// - [AuthUserService]
+///
+/// Preserves 100% backward compatibility for all existing callers across the app.
 class SupabaseService {
   final FlutterLocalNotificationsPlugin _local;
-  final StreamController<void> _inventoryController = StreamController<void>.broadcast();
-Stream<void> get onInventoryChanged => _inventoryController.stream;
-  SupabaseService(this._local);
-
   final SupabaseClient client = Supabase.instance.client;
 
-  /// Fetch only this user’s inventory
-  Future<List<Map<String, dynamic>>> fetchInventory() async {
-    final uid = client.auth.currentUser!.id;
-    final data = await client
-        .from('inventory_items')
-        .select('''
-         id,
-         name,
-         created_at,
-         expiry_date,
-         quantity,
-         reminder_days_before,
-         reminder_hours_before,
-         inventory_item_categories (
-          category_id,
-          categories ( id, name, icon_url )
-      )
-    ''')
-        .eq('user_id', uid)
-        .order('expiry_date', ascending: true);
-    try {
-      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
-      return [];
-    }
+  late final NotificationService notificationService;
+  late final FridgeService fridgeService;
+  late final InventoryService inventoryService;
+  late final WasteDonationService wasteDonationService;
+  late final AuthUserService authUserService;
+
+  SupabaseService(this._local) {
+    notificationService = NotificationService(_local);
+    fridgeService = FridgeService(client: client);
+    authUserService = AuthUserService(client: client);
+
+    inventoryService = InventoryService(
+      client: client,
+      notificationService: notificationService,
+      getDefaultFridgeId: () => fridgeService.getDefaultFridgeId(),
+      ensureItemFridgeAssigned: () => fridgeService.ensureItemFridgeAssigned(),
+      getActiveLocalUserName: () => authUserService.activeLocalUserName,
+    );
+
+    wasteDonationService = WasteDonationService(
+      client: client,
+      onUpdateItemQuantity: (id, qty) => inventoryService.updateItemQuantity(id, qty),
+      onDeleteInventoryItem: (id) => inventoryService.deleteInventoryItem(id),
+    );
   }
 
-  /// Fetch the full list of (pre‐seeded) categories
-  Future<List<Map<String, dynamic>>> fetchCategories() async {
-    final data = await client.from('categories').select('id, name, icon_url, default_expiry_days').order('name');
-    try {
-      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
+  // ---------------------------------------------------------------------------
+  // Broadcast Streams & Properties
+  // ---------------------------------------------------------------------------
 
-  /// Fetch only this user’s waste logs (prefer denormalized item_name, fallback to join)
-  Future<List<Map<String, dynamic>>> fetchWasteLogs() async {
-    final uid = client.auth.currentUser!.id;
-    final data = await client
-        .from('waste_logs')
-        .select('id, item_id, quantity, reason, item_name, logged_at, inventory_items(name)')
-        .eq('user_id', uid)
-        .order('logged_at', ascending: false);
-    try {
-      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
+  Stream<void> get onInventoryChanged => inventoryService.onInventoryChanged;
+
+  bool get isAdminMode => authUserService.isAdminMode;
+
+  String? get activeLocalUserId => authUserService.activeLocalUserId;
+  set activeLocalUserId(String? val) => authUserService.activeLocalUserId = val;
+
+  String? get activeLocalUserName => authUserService.activeLocalUserName;
+  set activeLocalUserName(String? val) => authUserService.activeLocalUserName = val;
+
+  String? getCurrentUserId() => client.auth.currentUser?.id;
+
+  // ---------------------------------------------------------------------------
+  // Inventory Operations (Delegated to InventoryService)
+  // ---------------------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> fetchInventory() =>
+      inventoryService.fetchInventory();
+
+  Future<List<InventoryItem>> fetchInventoryItems() =>
+      inventoryService.fetchInventoryItems();
+
+  Future<List<Map<String, dynamic>>> fetchCategories() =>
+      inventoryService.fetchCategories();
+
+  Future<List<Category>> fetchCategoryModels() =>
+      inventoryService.fetchCategoryModels();
+
+  Future<List<Map<String, dynamic>>> fetchInventoryByCategory(String categoryId) =>
+      inventoryService.fetchInventoryByCategory(categoryId);
 
   Future<void> addItem({
     required String name,
@@ -76,664 +101,194 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
     required int reminderHoursBefore,
     required List<String> categoryIds,
     String? fridgeId,
-  }) async {
-    final uid = client.auth.currentUser!.id;
-    final resolvedFridgeId = fridgeId ?? await getDefaultFridgeId();
-
-    // 1) insert the item
-    final res = await client
-        .from('inventory_items')
-        .insert({
-          'name': name,
-          'expiry_date': expiry.toIso8601String(),
-          'quantity': quantity,
-          'reminder_days_before': reminderDaysBefore,
-          'reminder_hours_before': reminderHoursBefore,
-          'user_id': uid,
-          if (resolvedFridgeId != null) 'fridge_id': resolvedFridgeId,
-        })
-        .select('id')
-        .single();
-    final itemId = res['id'] as String;
-
-    // 2) link to categories
-    if (categoryIds.isNotEmpty) {
-      await client.from('inventory_item_categories').insert(
-            categoryIds
-                .map((catId) => {'inventory_item_id': itemId, 'category_id': catId})
-                .toList(),
-          );
-    }
-
-    await _scheduleExpiryReminder(
-      itemId: itemId,
-      name: name,
-      expiry: expiry,
-      reminderDaysBefore: reminderDaysBefore,
-      reminderHoursBefore: reminderHoursBefore,
-    );
-
-    // Notify listeners that inventory has changed
-    _inventoryController.add(null);
-  }
-
-  /// Add multiple items at once
-  Future<void> addMultipleItems(List<Map<String, dynamic>> items, [String? defaultFridgeId]) async {
-    final uid = client.auth.currentUser!.id;
-    final resolvedFridgeId = defaultFridgeId ?? await getDefaultFridgeId();
-
-    for (final itemData in items) {
-      final fId = (itemData['fridgeId'] as String?) ?? resolvedFridgeId;
-      // 1) insert the item
-      final res = await client
-          .from('inventory_items')
-          .insert({
-            'name': itemData['name'],
-            'expiry_date': (itemData['expiry'] as DateTime).toIso8601String(),
-            'quantity': itemData['quantity'],
-            'reminder_days_before': itemData['reminderDaysBefore'],
-            'reminder_hours_before': itemData['reminderHoursBefore'],
-            'user_id': uid,
-            if (fId != null) 'fridge_id': fId,
-          })
-          .select('id')
-          .single();
-      final itemId = res['id'] as String;
-
-      // 2) link to categories
-      final categoryIds = itemData['categoryIds'] as List<String>;
-      if (categoryIds.isNotEmpty) {
-        await client.from('inventory_item_categories').insert(
-              categoryIds
-                  .map((catId) => {'inventory_item_id': itemId, 'category_id': catId})
-                  .toList(),
-            );
-      }
-
-      await _scheduleExpiryReminder(
-        itemId: itemId,
-        name: itemData['name'] as String,
-        expiry: itemData['expiry'] as DateTime,
-        reminderDaysBefore: itemData['reminderDaysBefore'] as int,
-        reminderHoursBefore: itemData['reminderHoursBefore'] as int,
+  }) =>
+      inventoryService.addItem(
+        name: name,
+        expiry: expiry,
+        quantity: quantity,
+        reminderDaysBefore: reminderDaysBefore,
+        reminderHoursBefore: reminderHoursBefore,
+        categoryIds: categoryIds,
+        fridgeId: fridgeId,
       );
-    }
-    
-    // Notify listeners that inventory has changed
-    _inventoryController.add(null);
-  }
 
-  /// Log waste FOR THIS USER (reduces quantity; deletes only if all units wasted)
-  Future<void> logWaste(String itemId, int qty, [String? reason]) async {
-    final uid = client.auth.currentUser!.id;
+  Future<void> addMultipleItems(List<Map<String, dynamic>> items, [String? defaultFridgeId]) =>
+      inventoryService.addMultipleItems(items, defaultFridgeId);
 
-    // get name and current quantity BEFORE updating
-    String itemName = '';
-    int currentQty = 1;
+  Future<void> updateItemQuantity(String itemId, int newQty) =>
+      inventoryService.updateItemQuantity(itemId, newQty);
+
+  Future<void> consumeItem(String itemId, [int qty = 1]) =>
+      inventoryService.consumeItem(itemId, qty);
+
+  Future<void> deleteInventoryItem(String id) =>
+      inventoryService.deleteInventoryItem(id);
+
+  Future<void> rescheduleExpiryReminders() =>
+      inventoryService.rescheduleExpiryReminders();
+
+  Future<List<Map<String, dynamic>>> fetchFridgeItems(String fridgeId) =>
+      inventoryService.fetchFridgeItems(fridgeId);
+
+  // ---------------------------------------------------------------------------
+  // Waste & Donation Operations (Delegated to WasteDonationService)
+  // ---------------------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> fetchWasteLogs() =>
+      wasteDonationService.fetchWasteLogs();
+
+  Future<List<WasteLog>> fetchWasteLogModels() =>
+      wasteDonationService.fetchWasteLogModels();
+
+  Future<void> logWaste(String itemId, int qty, [String? reason]) =>
+      wasteDonationService.logWaste(itemId, qty, reason);
+
+  Future<void> deleteWasteLog(String id) =>
+      wasteDonationService.deleteWasteLog(id);
+
+  Future<List<Map<String, dynamic>>> fetchDonations() =>
+      wasteDonationService.fetchDonations();
+
+  Future<List<DonationItem>> fetchDonationModels() =>
+      wasteDonationService.fetchDonationModels();
+
+  Future<void> offerDonation(String itemId, String recipientInfo, [int qty = 1]) =>
+      wasteDonationService.offerDonation(itemId, recipientInfo, qty);
+
+  Future<void> deleteDonation(String id) =>
+      wasteDonationService.deleteDonation(id);
+
+  // ---------------------------------------------------------------------------
+  // Fridge Operations (Delegated to FridgeService)
+  // ---------------------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> fetchMyFridges() =>
+      fridgeService.fetchMyFridges();
+
+  Future<List<Fridge>> fetchMyFridgeModels() =>
+      fridgeService.fetchMyFridgeModels();
+
+  Future<List<Map<String, dynamic>>> fetchConnectedFridges() =>
+      fridgeService.fetchConnectedFridges();
+
+  Future<String?> getDefaultFridgeId() =>
+      fridgeService.getDefaultFridgeId();
+
+  Future<void> ensureItemFridgeAssigned() =>
+      fridgeService.ensureItemFridgeAssigned();
+
+  Future<List<Map<String, dynamic>>> fetchFridgeMembers() =>
+      fridgeService.fetchFridgeMembers();
+
+  Future<List<FridgeMember>> fetchFridgeMemberModels() =>
+      fridgeService.fetchFridgeMemberModels();
+
+  Future<List<Map<String, dynamic>>> fetchFridgeMembersForFridge(String fridgeId) =>
+      fridgeService.fetchFridgeMembersForFridge(fridgeId);
+
+  Future<List<Map<String, dynamic>>> fetchPendingRequests() =>
+      fridgeService.fetchPendingRequests();
+
+  Future<List<JoinRequest>> fetchPendingRequestModels() =>
+      fridgeService.fetchPendingRequestModels();
+
+  Future<List<Map<String, dynamic>>> fetchPendingRequestsForFridge(String fridgeId) =>
+      fridgeService.fetchPendingRequestsForFridge(fridgeId);
+
+  Future<String?> createFridge({String? name, String? location}) =>
+      fridgeService.createFridge(name: name, location: location);
+
+  Future<bool> deleteFridge(String fridgeId) =>
+      fridgeService.deleteFridge(fridgeId);
+
+  Future<String?> regenerateFridgeCode(String fridgeId) =>
+      fridgeService.regenerateFridgeCode(fridgeId);
+
+  Future<Map<String, dynamic>> joinFridgeWithCode(String code) =>
+      fridgeService.joinFridgeWithCode(code);
+
+  Future<bool> requestToJoinFridge(String fridgeId, String message) =>
+      fridgeService.requestToJoinFridge(fridgeId, message);
+
+  Future<void> promoteUser(String userId, String fridgeId) =>
+      fridgeService.promoteUser(userId, fridgeId);
+
+  Future<void> demoteUser(String userId, String fridgeId) =>
+      fridgeService.demoteUser(userId, fridgeId);
+
+  Future<void> removeUserFromFridge(String userId, String fridgeId) =>
+      fridgeService.removeUserFromFridge(userId, fridgeId);
+
+  Future<void> approveJoinRequest(String requestId) =>
+      fridgeService.approveJoinRequest(requestId);
+
+  Future<void> rejectJoinRequest(String requestId) =>
+      fridgeService.rejectJoinRequest(requestId);
+
+  Future<Map<String, dynamic>?> fetchFridgeById(String fridgeId) async {
     try {
-      final inv = await client
-          .from('inventory_items')
-          .select('name, quantity')
-          .eq('id', itemId)
-          .single();
-      itemName = (inv['name'] as String?) ?? '';
-      currentQty = (inv['quantity'] as int?) ?? 1;
-    } catch (_) {}
-
-    final entry = {
-      'item_id': itemId,
-      'quantity': qty,
-      'logged_at': DateTime.now().toIso8601String(),
-      'user_id': uid,
-      if (reason?.isNotEmpty ?? false) 'reason': reason,
-      if (itemName.isNotEmpty) 'item_name': itemName, // denormalized
-    };
-    await client.from('waste_logs').insert(entry);
-
-    // If only part of the quantity was wasted, reduce the inventory item's quantity;
-    // only delete the item if all units have been wasted.
-    if (currentQty > qty) {
-      await updateItemQuantity(itemId, currentQty - qty);
-    } else {
-      await deleteInventoryItem(itemId);
-    }
-  }
-
-  /// Delete a waste log by its id
-  Future<void> deleteWasteLog(String id) async {
-    await client.from('waste_logs').delete().eq('id', id);
-  }
-
-  /// Offer a donation FOR THIS USER (reduces quantity; deletes only if all units offered)
-  Future<void> offerDonation(String itemId, String recipientInfo, [int qty = 1]) async {
-    final uid = client.auth.currentUser!.id;
-
-    // get name and current quantity BEFORE updating
-    String itemName = '';
-    int currentQty = 1;
-    try {
-      final inv = await client
-          .from('inventory_items')
-          .select('name, quantity')
-          .eq('id', itemId)
-          .single();
-      itemName = (inv['name'] as String?) ?? '';
-      currentQty = (inv['quantity'] as int?) ?? 1;
-    } catch (_) {}
-
-    await client.from('donations').insert({
-      'item_id': itemId,
-      'recipient_info': recipientInfo,
-      'offered_at': DateTime.now().toIso8601String(),
-      'user_id': uid,
-      if (itemName.isNotEmpty) 'item_name': itemName, // denormalized
-    });
-
-    if (currentQty > qty) {
-      await updateItemQuantity(itemId, currentQty - qty);
-    } else {
-      await deleteInventoryItem(itemId);
-    }
-  }
-
-  /// Update the quantity of an inventory item. If newQty <= 0, deletes the item.
-  Future<void> updateItemQuantity(String itemId, int newQty) async {
-    if (newQty <= 0) {
-      await deleteInventoryItem(itemId);
-    } else {
-      await client.from('inventory_items').update({'quantity': newQty}).eq('id', itemId);
-      _inventoryController.add(null);
-    }
-  }
-
-  /// Consume an inventory item by reducing its quantity (or deleting if all consumed).
-  Future<void> consumeItem(String itemId, [int qty = 1]) async {
-    int currentQty = 1;
-    try {
-      final inv = await client
-          .from('inventory_items')
-          .select('quantity')
-          .eq('id', itemId)
-          .single();
-      currentQty = (inv['quantity'] as int?) ?? 1;
-    } catch (_) {}
-
-    if (currentQty > qty) {
-      await updateItemQuantity(itemId, currentQty - qty);
-    } else {
-      await deleteInventoryItem(itemId);
-    }
-  }
-
-  /// Fetch only this user’s donations (prefer denormalized item_name)
-  Future<List<Map<String, dynamic>>> fetchDonations() async {
-    final uid = client.auth.currentUser!.id;
-    final data = await client
-        .from('donations')
-        .select('id, item_id, item_name, recipient_info, offered_at, inventory_items(name)')
-        .eq('user_id', uid)
-        .order('offered_at', ascending: false);
-    try {
-      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  // Delete an inventory item by its id
-  Future<void> deleteInventoryItem(String id) async {
-    await client.from('inventory_items').delete().eq('id', id);
-    if (!kIsWeb) {
-      try {
-        await _local.cancel(_notificationIdForItem(id));
-      } catch (error) {
-        debugPrint('Could not cancel notification for $id: $error');
-      }
-    }
-    _inventoryController.add(null);
-  }
-
-  /// Rebuilds the app's pending expiry reminders after launch. Clearing first
-  /// also removes reminders for inventory entries deleted on another device.
-  Future<void> rescheduleExpiryReminders() async {
-    if (kIsWeb) return;
-    final items = await fetchInventory();
-    try {
-      await _local.cancelAll();
-    } catch (error) {
-      debugPrint('Could not clear notifications before reschedule: $error');
-    }
-
-    for (final item in items) {
-      try {
-        await _scheduleExpiryReminder(
-          itemId: item['id'] as String,
-          name: item['name'] as String,
-          expiry: DateTime.parse(item['expiry_date'] as String),
-          reminderDaysBefore: (item['reminder_days_before'] as int?) ?? 0,
-          reminderHoursBefore: (item['reminder_hours_before'] as int?) ?? 0,
-        );
-      } catch (error) {
-        debugPrint('Could not restore reminder for ${item['id']}: $error');
-      }
-    }
-  }
-
-  Future<void> _scheduleExpiryReminder({
-    required String itemId,
-    required String name,
-    required DateTime expiry,
-    required int reminderDaysBefore,
-    required int reminderHoursBefore,
-  }) async {
-    if (kIsWeb) return;
-    final notifyTime = expiry.subtract(
-      Duration(days: reminderDaysBefore, hours: reminderHoursBefore),
-    );
-    if (!notifyTime.isAfter(DateTime.now())) return;
-
-    try {
-      await _local.zonedSchedule(
-        _notificationIdForItem(itemId),
-        'Expiry Reminder',
-        '$name expires on ${expiry.toLocal()}',
-        tz.TZDateTime.from(notifyTime, tz.local),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'expiry_channel',
-            'Expiry Alerts',
-            channelDescription: 'Reminders for inventory expiry',
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        androidAllowWhileIdle: true,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-      );
-    } catch (error) {
-      // The item is saved even when the OS rejects a reminder, but the failure
-      // remains visible in logs instead of being silently discarded.
-      debugPrint('Could not schedule expiry reminder for $itemId: $error');
-    }
-  }
-
-  /// Generates a repeatable non-negative Android notification ID from a UUID.
-  int _notificationIdForItem(String itemId) {
-    var hash = 0x811C9DC5;
-    for (final codeUnit in itemId.codeUnits) {
-      hash ^= codeUnit;
-      hash = (hash * 0x01000193) & 0x7fffffff;
-    }
-    return hash;
-  }
-
-  /// Delete a donation by its id
-  Future<void> deleteDonation(String id) async {
-    await client.from('donations').delete().eq('id', id);
-  }
-
-  /// Fetch this user's inventory filtered by category
-  Future<List<Map<String, dynamic>>> fetchInventoryByCategory(String categoryId) async {
-    final uid = client.auth.currentUser!.id;
-    final data = await client
-        .from('inventory_items')
-        .select('''
-         id,
-         name,
-         created_at,
-         expiry_date,
-         quantity,
-         reminder_days_before,
-         reminder_hours_before,
-         inventory_item_categories!inner(
-            category_id,
-            categories ( id, name, icon_url )
-         )
-        ''')
-        .eq('user_id', uid)
-        .eq('inventory_item_categories.category_id', categoryId)
-        .order('expiry_date', ascending: true);
-    try {
-      return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  // User Management Methods
-
-  /// Returns the current user's account id, creating the account row if missing
-  Future<String> _getOrCreateAccountId() async {
-    try {
-      final uid = client.auth.currentUser!.id;
-      // Try to fetch the account for this owner
-      final existing = await client
-          .from('accounts')
-          .select('id')
-          .eq('owner_id', uid)
+      final f = await client
+          .from('fridges')
+          .select('id, name, location, created_at, user_id')
+          .eq('id', fridgeId)
           .maybeSingle();
-      if (existing != null && existing['id'] != null) {
-        return existing['id'] as String;
-      }
-      // Create if not found
-      final created = await client
-          .from('accounts')
-          .insert({'owner_id': uid})
-          .select('id')
-          .single();
-      return created['id'] as String;
+      if (f == null) return null;
+      return Map<String, dynamic>.from(f as Map);
     } catch (e) {
-      debugPrint('Error ensuring account exists: $e');
-      rethrow;
+      debugPrint('Error fetching fridge by id: $e');
+      return null;
     }
   }
 
-  /// Fetch local users for the current user's account
-  Future<List<Map<String, dynamic>>> fetchLocalUsers() async {
-    try {
-      // Ensure the current user has an account row; create if missing
-      final accountId = await _getOrCreateAccountId();
-      
-      // Then fetch local users for this account
-      final data = await client
-          .from('local_users')
-          .select('id, name, created_at')
-          .eq('account_id', accountId)
-          .order('created_at', ascending: false);
-      
-      return List<Map<String, dynamic>>.from(data);
-    } catch (e) {
-      // Return empty list if tables don't exist yet
-      debugPrint('Error fetching local users: $e');
-      return [];
-    }
-  }
+  // ---------------------------------------------------------------------------
+  // Auth & Local User Operations (Delegated to AuthUserService)
+  // ---------------------------------------------------------------------------
 
-  /// Fetch fridge members for fridges the current user has access to
-  Future<List<Map<String, dynamic>>> fetchFridgeMembers() async {
-    try {
-      final uid = client.auth.currentUser!.id;
-      
-      // First get the fridges the current user has access to
-      final userFridges = await client
-          .from('fridge_users')
-          .select('fridge_id')
-          .eq('user_id', uid);
-      
-      if (userFridges.isEmpty) return [];
-      
-      final fridgeIds = userFridges.map((f) => f['fridge_id']).toList();
-      
-      final data = await client
-          .from('fridge_users')
-          .select('''
-            id,
-            user_id,
-            fridge_id,
-            role,
-            joined_at,
-            fridges!fridge_users_fridge_id_fkey(name)
-          ''')
-          .inFilter('fridge_id', fridgeIds)
-          .order('joined_at', ascending: false);
-      
-      final items = List<Map<String, dynamic>>.from(data);
-      final userIds = items
-          .map((item) => item['user_id'] as String?)
-          .where((id) => id != null && id.isNotEmpty)
-          .cast<String>()
-          .toSet()
-          .toList();
+  Future<List<Map<String, dynamic>>> fetchLocalUsers() =>
+      authUserService.fetchLocalUsers();
 
-      final Map<String, String> userNames = {};
-      if (userIds.isNotEmpty) {
-        try {
-          final profs = await client
-              .from('profiles')
-              .select('id, full_name')
-              .inFilter('id', userIds);
-          for (final p in List<Map<String, dynamic>>.from(profs)) {
-            final pid = p['id']?.toString();
-            final pname = p['full_name']?.toString();
-            if (pid != null && pname != null) {
-              userNames[pid] = pname;
-            }
-          }
-        } catch (e) {
-          debugPrint('Error fetching profiles for fridge members: $e');
-        }
-      }
+  Future<List<LocalUser>> fetchLocalUserModels() =>
+      authUserService.fetchLocalUserModels();
 
-      // Transform the data to flatten the nested objects
-      return items.map((item) {
-        final uid = item['user_id']?.toString();
-        return {
-          'id': item['id'],
-          'user_id': item['user_id'],
-          'fridge_id': item['fridge_id'],
-          'role': item['role'],
-          'joined_at': item['joined_at'],
-          'user_name': (uid != null && userNames.containsKey(uid)) ? userNames[uid] : 'Unknown User',
-          'fridge_name': item['fridges']?['name'] ?? 'Unknown Fridge',
-        };
-      }).toList();
-    } catch (e) {
-      debugPrint('Error fetching fridge members: $e');
-      return [];
-    }
-  }
+  Future<void> createLocalUser(String name) =>
+      authUserService.createLocalUser(name);
 
-  /// Fetch pending join requests for fridges the current user can manage
-  Future<List<Map<String, dynamic>>> fetchPendingRequests() async {
-    final uid = client.auth.currentUser!.id;
-    
-    // First get the fridges where the current user is an admin
-    final adminFridges = await client
-        .from('fridge_users')
-        .select('fridge_id')
-        .eq('user_id', uid)
-        .eq('role', 'admin');
-    
-    if (adminFridges.isEmpty) return [];
-    
-    final fridgeIds = adminFridges.map((f) => f['fridge_id']).toList();
-    
-    final data = await client
-        .from('fridge_requests')
-        .select('''
-          id,
-          requester_id,
-          fridge_id,
-          status,
-          message,
-          created_at,
-          fridges!fridge_requests_fridge_id_fkey(name)
-        ''')
-        .eq('status', 'pending')
-        .inFilter('fridge_id', fridgeIds)
-        .order('created_at', ascending: false);
-    
-    final items = List<Map<String, dynamic>>.from(data);
-    final requesterIds = items
-        .map((item) => item['requester_id'] as String?)
-        .where((id) => id != null && id.isNotEmpty)
-        .cast<String>()
-        .toSet()
-        .toList();
+  Future<void> createLocalUserWithPassword(String name, String password) =>
+      authUserService.createLocalUserWithPassword(name, password);
 
-    final Map<String, String> userNames = {};
-    if (requesterIds.isNotEmpty) {
-      try {
-        final profs = await client
-            .from('profiles')
-            .select('id, full_name')
-            .inFilter('id', requesterIds);
-        for (final p in List<Map<String, dynamic>>.from(profs)) {
-          final pid = p['id']?.toString();
-          final pname = p['full_name']?.toString();
-          if (pid != null && pname != null) {
-            userNames[pid] = pname;
-          }
-        }
-      } catch (e) {
-        debugPrint('Error fetching profiles for pending requests: $e');
-      }
-    }
+  Future<void> updateLocalUser(String userId, String newName) =>
+      authUserService.updateLocalUser(userId, newName);
 
-    // Transform the data to flatten the nested objects
-    return items.map((item) {
-      final reqId = item['requester_id']?.toString();
-      return {
-        'id': item['id'],
-        'requester_id': item['requester_id'],
-        'fridge_id': item['fridge_id'],
-        'status': item['status'],
-        'message': item['message'],
-        'created_at': item['created_at'],
-        'requester_name': (reqId != null && userNames.containsKey(reqId)) ? userNames[reqId] : 'Unknown User',
-        'fridge_name': item['fridges']?['name'] ?? 'Unknown Fridge',
-      };
-    }).toList();
-  }
+  Future<void> updateLocalUserPassword(String userId, String newPassword) =>
+      authUserService.updateLocalUserPassword(userId, newPassword);
 
-    /// Fetch fridges the current user has access to
-Future<List<Map<String, dynamic>>> fetchMyFridges() async {
-  try {
-    final uid = client.auth.currentUser!.id;
-    
-    final data = await client
-        .from('fridge_users')
-        .select('''
-          fridge_id,
-          role,
-          joined_at,
-          fridges!fridge_users_fridge_id_fkey(
-            id,
-            name,
-            location,
-            created_at
-          )
-        ''')
-        .eq('user_id', uid)
-        .order('joined_at', ascending: false);
-    
-    // Transform the data to flatten the nested objects
-    return List<Map<String, dynamic>>.from(data).map((item) {
-      final fridge = item['fridges'];
-      if (fridge == null) return null; // Skip if fridge was deleted
-      return {
-        'id': fridge['id'],
-        'name': fridge['name'],
-        'location': fridge['location'],
-        'created_at': fridge['created_at'],
-        'role': item['role'],
-        'joined_at': item['joined_at'],
-      };
-    }).where((item) => item != null).cast<Map<String, dynamic>>().toList();
-  } catch (e) {
-    debugPrint('Error fetching my fridges: $e');
-    return [];
-  }
-}
+  Future<void> deleteLocalUser(String userId) =>
+      authUserService.deleteLocalUser(userId);
 
-  /// Fetch fridges connected to the current user (via membership or items)
-  /// Fetch fridges connected to the current user (via membership or items)
-Future<List<Map<String, dynamic>>> fetchConnectedFridges() async {
-  try {
-    final uid = client.auth.currentUser!.id;
-    
-    // Get fridges where user is a member
-    final memberFridges = await client
-        .from('fridge_users')
-        .select('''
-          fridge_id,
-          role,
-          joined_at,
-          fridges!fridge_users_fridge_id_fkey(
-            id,
-            name,
-            location,
-            created_at
-          )
-        ''')
-        .eq('user_id', uid)
-        .order('joined_at', ascending: false);
-    
-    // Transform the data
-    final result = <Map<String, dynamic>>[];
-    for (final item in memberFridges) {
-      final fridge = item['fridges'];
-      if (fridge != null) {
-        result.add({
-          'id': fridge['id'],
-          'name': fridge['name'],
-          'location': fridge['location'],
-          'created_at': fridge['created_at'],
-          'role': item['role'],
-          'joined_at': item['joined_at'],
-        });
-      }
-    }
-    
-    // Also get fridges owned by the user (in case they're not in fridge_users yet)
-    final ownedFridges = await client
-        .from('fridges')
-        .select('id, name, location, created_at')
-        .eq('user_id', uid)
-        .order('created_at', ascending: false);
-    
-    // Add owned fridges that aren't already in the list
-    for (final fridge in ownedFridges) {
-      final fridgeId = fridge['id'];
-      if (!result.any((f) => f['id'] == fridgeId)) {
-        result.add({
-          'id': fridge['id'],
-          'name': fridge['name'],
-          'location': fridge['location'],
-          'created_at': fridge['created_at'],
-          'role': 'admin', // Owner is always admin
-          'joined_at': fridge['created_at'],
-        });
-      }
-    }
-    
-    return result;
-  } catch (e) {
-    debugPrint('Error fetching connected fridges: $e');
-    return [];
-  }
-}
+  Future<bool> verifyAndSelectLocalUser(String localUserId, String password) =>
+      authUserService.verifyAndSelectLocalUser(localUserId, password);
 
-  /// Get default/primary fridge ID for current user
-  Future<String?> getDefaultFridgeId() async {
-    try {
-      final fridges = await fetchConnectedFridges();
-      if (fridges.isNotEmpty) {
-        return fridges.first['id']?.toString();
-      }
-    } catch (e) {
-      debugPrint('Error getting default fridge: $e');
-    }
-    return null;
-  }
+  Future<void> setAdminMode() =>
+      authUserService.setAdminMode();
 
-  /// Backfill items with null fridge_id to the user's primary fridge
-  Future<void> ensureItemFridgeAssigned() async {
-    try {
-      final defaultFridgeId = await getDefaultFridgeId();
-      if (defaultFridgeId == null) return;
-      final uid = client.auth.currentUser?.id;
-      if (uid == null) return;
+  Future<bool> hasLocalUsers() =>
+      authUserService.hasLocalUsers();
 
-      await client
-          .from('inventory_items')
-          .update({'fridge_id': defaultFridgeId})
-          .eq('user_id', uid)
-          .isFilter('fridge_id', null);
-    } catch (e) {
-      debugPrint('Error backfilling fridge items: $e');
-    }
-  }
+  Future<void> loadSavedUserContext() =>
+      authUserService.loadSavedUserContext();
+
+  Future<void> saveUserContext() =>
+      authUserService.saveUserContext();
+
+  Future<void> clearUserContext() =>
+      authUserService.clearUserContext();
+
+  Future<void> sendPasswordReset(String email) =>
+      authUserService.sendPasswordReset(email);
+
+  // ---------------------------------------------------------------------------
+  // Aggregated Dashboard Stats
+  // ---------------------------------------------------------------------------
 
   /// Fetch dashboard summary metrics (Active Items, Expiring in <= 48h, Meals Shared)
   Future<Map<String, int>> fetchDashboardStats() async {
@@ -761,718 +316,4 @@ Future<List<Map<String, dynamic>>> fetchConnectedFridges() async {
       return {'activeItems': 0, 'expiringSoon': 0, 'mealsShared': 0};
     }
   }
-
-  /// Fetch items in a given fridge with resolved owner names
-  Future<List<Map<String, dynamic>>> fetchFridgeItems(String fridgeId) async {
-    try {
-      // Backfill any unassigned items first so fridge is populated
-      await ensureItemFridgeAssigned();
-
-      final currentUid = client.auth.currentUser?.id;
-      final data = await client
-          .from('inventory_items')
-          .select('id, name, expiry_date, quantity, user_id, created_at')
-          .eq('fridge_id', fridgeId)
-          .order('expiry_date', ascending: true);
-      
-      final list = (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      return list.map((it) {
-        final ownerId = it['user_id'] as String?;
-        final isOwner = ownerId != null && ownerId == currentUid;
-        final ownerName = isOwner ? (activeLocalUserName ?? 'You') : 'Member';
-        return {
-          ...it,
-          'user_name': ownerName,
-        };
-      }).toList();
-    } catch (e) {
-      debugPrint('Error fetching fridge items: $e');
-      return [];
-    }
-  }
-
-  /// Fetch members for a specific fridge with accurate display names
-  Future<List<Map<String, dynamic>>> fetchFridgeMembersForFridge(String fridgeId) async {
-    try {
-      final data = await client
-          .from('fridge_users')
-          .select('id, user_id, role, joined_at')
-          .eq('fridge_id', fridgeId)
-          .order('joined_at', ascending: true);
-      
-      final items = List<Map<String, dynamic>>.from(data);
-      final userIds = items
-          .map((m) => m['user_id'] as String?)
-          .where((id) => id != null && id.isNotEmpty)
-          .cast<String>()
-          .toSet()
-          .toList();
-
-      final Map<String, String> userNames = {};
-      if (userIds.isNotEmpty) {
-        // 1. Try profiles
-        try {
-          final profs = await client
-              .from('profiles')
-              .select('id, full_name')
-              .inFilter('id', userIds);
-          for (final p in List<Map<String, dynamic>>.from(profs)) {
-            final pid = p['id']?.toString();
-            final pname = p['full_name']?.toString();
-            if (pid != null && pname != null && pname.isNotEmpty) {
-              userNames[pid] = pname;
-            }
-          }
-        } catch (e) {
-          debugPrint('Error fetching profiles: $e');
-        }
-
-        // 2. Try local_users for remaining unresolved IDs
-        final missingIds = userIds.where((id) => !userNames.containsKey(id)).toList();
-        if (missingIds.isNotEmpty) {
-          try {
-            final localUsrs = await client
-                .from('local_users')
-                .select('id, name')
-                .inFilter('id', missingIds);
-            for (final lu in List<Map<String, dynamic>>.from(localUsrs)) {
-              final lid = lu['id']?.toString();
-              final lname = lu['name']?.toString();
-              if (lid != null && lname != null && lname.isNotEmpty) {
-                userNames[lid] = lname;
-              }
-            }
-          } catch (e) {
-            debugPrint('Error fetching local_users for fridge members: $e');
-          }
-        }
-      }
-
-      final currentUid = client.auth.currentUser?.id;
-      final currentEmail = client.auth.currentUser?.email;
-
-      return items.map((m) {
-        final uid = m['user_id']?.toString();
-        String name = 'Member';
-        if (uid != null && userNames.containsKey(uid) && userNames[uid]!.isNotEmpty) {
-          name = userNames[uid]!;
-        } else if (uid != null && uid == currentUid) {
-          name = activeLocalUserName ?? (currentEmail?.split('@').first) ?? 'You';
-        }
-
-        return {
-          'id': m['id'],
-          'user_id': m['user_id'],
-          'role': m['role'],
-          'joined_at': m['joined_at'],
-          'user_name': name,
-        };
-      }).toList();
-    } catch (e) {
-      debugPrint('Error fetching fridge members: $e');
-      return [];
-    }
-  }
-
-  /// Fetch pending requests for a specific fridge (admin view)
-  Future<List<Map<String, dynamic>>> fetchPendingRequestsForFridge(String fridgeId) async {
-    try {
-      final data = await client
-          .from('fridge_requests')
-          .select('id, requester_id, fridge_id, status, message, created_at')
-          .eq('fridge_id', fridgeId)
-          .eq('status', 'pending')
-          .order('created_at', ascending: false);
-
-      final items = List<Map<String, dynamic>>.from(data);
-      final reqIds = items
-          .map((r) => r['requester_id'] as String?)
-          .where((id) => id != null && id.isNotEmpty)
-          .cast<String>()
-          .toSet()
-          .toList();
-
-      final Map<String, String> userNames = {};
-      if (reqIds.isNotEmpty) {
-        try {
-          final profs = await client
-              .from('profiles')
-              .select('id, full_name')
-              .inFilter('id', reqIds);
-          for (final p in List<Map<String, dynamic>>.from(profs)) {
-            final pid = p['id']?.toString();
-            final pname = p['full_name']?.toString();
-            if (pid != null && pname != null) {
-              userNames[pid] = pname;
-            }
-          }
-        } catch (e) {
-          debugPrint('Error fetching profiles: $e');
-        }
-      }
-
-      return items.map((r) {
-        final rid = r['requester_id']?.toString();
-        return {
-          'id': r['id'],
-          'requester_id': r['requester_id'],
-          'status': r['status'],
-          'message': r['message'],
-          'created_at': r['created_at'],
-          'requester_name': (rid != null && userNames.containsKey(rid)) ? userNames[rid] : 'Unknown',
-        };
-      }).toList();
-    } catch (e) {
-      debugPrint('Error fetching fridge requests: $e');
-      return [];
-    }
-  }
-
-/// Regenerate fridge code via RPC or direct update
-Future<String?> regenerateFridgeCode(String fridgeId) async {
-  try {
-    // Try RPC first if it exists
-    try {
-      final res = await client.rpc('regenerate_fridge_code', params: {'p_fridge': fridgeId});
-      if (res != null) {
-        if (res is String) return res;
-        if (res is Map && res.containsKey('code')) return res['code']?.toString();
-        return res.toString();
-      }
-    } catch (rpcError) {
-      debugPrint('RPC not available, generating code locally: $rpcError');
-    }
-    
-    // Fallback: generate a unique code locally
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final code = '${fridgeId.substring(0, 3).toUpperCase()}${timestamp.toString().substring(7, 13)}';
-    
-    // Update the fridge with the new code
-    await client
-        .from('fridges')
-        .update({'code': code})
-        .eq('id', fridgeId);
-    
-    debugPrint('Generated fridge code: $code for fridge: $fridgeId');
-    return code;
-  } catch (e) {
-    debugPrint('Error regenerating fridge code: $e');
-    return null;
-  }
 }
-
-  /// Helper to return current authenticated user's id
-  String? getCurrentUserId() {
-    return client.auth.currentUser?.id;
-  }
-
-  /// Create a new fridge (owner becomes admin)
-  Future<String?> createFridge({String? name, String? location}) async {
-    try {
-      final uid = client.auth.currentUser!.id;
-      final res = await client.from('fridges').insert({
-        'user_id': uid,
-        if (name != null) 'name': name,
-        if (location != null) 'location': location,
-      }).select('id').single();
-      // id may be returned as int or string depending on DB setup; normalize to String
-      String? id;
-      try {
-        id = (res['id']).toString();
-      } catch (_) {
-        id = null;
-      }
-      // add owner as fridge_user
-      if (id != null) {
-        try {
-          await client.from('fridge_users').insert({'user_id': uid, 'fridge_id': id, 'role': 'admin'});
-        } catch (_) {
-          // ignore duplicate membership
-        }
-        debugPrint('Created fridge id=$id for user=$uid');
-      }
-      return id;
-    } catch (e) {
-      debugPrint('Error creating fridge: $e');
-      return null;
-    }
-  }
-
-  /// Delete a fridge (admin only)
-/// Delete a fridge (admin/owner only). Removes dependent rows first to avoid FK constraint errors.
-Future<bool> deleteFridge(String fridgeId) async {
-  try {
-    final uid = client.auth.currentUser!.id;
-
-    // Find fridge row to verify ownership/admin
-    final fridgeRow = await client.from('fridges').select('user_id').eq('id', fridgeId).maybeSingle();
-    if (fridgeRow == null) {
-      debugPrint('deleteFridge: fridge not found $fridgeId');
-      return false;
-    }
-
-    final ownerId = fridgeRow['user_id']?.toString();
-
-    // Check membership role (admin) OR owner of fridge
-    final membership = await client
-        .from('fridge_users')
-        .select('role')
-        .eq('user_id', uid)
-        .eq('fridge_id', fridgeId)
-        .maybeSingle();
-
-    final bool isAdmin = (membership != null && membership['role'] == 'admin') || (ownerId != null && ownerId == uid);
-
-    if (!isAdmin) {
-      debugPrint('deleteFridge: user is not admin/owner of fridge $fridgeId');
-      return false;
-    }
-
-    // Delete dependent rows first to avoid FK constraints
-    // Adjust these as per your schema (remove/keep any related tables you need)
-    await client.from('fridge_requests').delete().eq('fridge_id', fridgeId);
-    await client.from('fridge_users').delete().eq('fridge_id', fridgeId);
-    await client.from('inventory_items').delete().eq('fridge_id', fridgeId);
-    // Optionally remove donations or other linked data:
-    // await client.from('donations').delete().eq('fridge_id', fridgeId);
-
-    // Now delete the fridge row
-    await client.from('fridges').delete().eq('id', fridgeId);
-
-    debugPrint('deleteFridge: deleted fridge $fridgeId');
-
-    return true;
-  } catch (e) {
-    debugPrint('Error deleting fridge: $e');
-    return false;
-  }
-}
-
-/// Join a fridge immediately using code
-/// Join a fridge immediately using code (instrumented + tolerant)
-Future<Map<String, dynamic>> joinFridgeWithCode(String code) async {
-  try {
-    final uid = client.auth.currentUser?.id;
-    if (uid == null) {
-      debugPrint('joinFridgeWithCode: no authenticated user');
-      return {'success': false, 'message': 'Not authenticated'};
-    }
-
-    debugPrint('Attempting to join fridge with code: $code (uid=$uid)');
-
-    // Try RPC path first
-    try {
-      final res = await client.rpc('join_fridge_with_code', params: {'p_code': code});
-      debugPrint('RPC result: $res');
-      if (res != null && res is Map && res['status'] == 'ok') {
-        final fridgeId = res['fridge_id']?.toString();
-        String fridgeName = 'Unknown Fridge';
-        if (fridgeId != null) {
-          try {
-            final fridgeData = await client.from('fridges').select('name').eq('id', fridgeId).maybeSingle();
-            fridgeName = fridgeData?['name'] ?? fridgeName;
-          } catch (e) {
-            debugPrint('Error reading fridge name after RPC: $e');
-          }
-        }
-        return {'success': true, 'fridgeId': fridgeId, 'fridgeName': fridgeName};
-      }
-    } catch (rpcError) {
-      debugPrint('RPC unavailable or failed (ok to ignore if you don\'t use RPC): $rpcError');
-    }
-
-    // Fallback: find fridge by code (case-insensitive trim)
-    final trimmed = code.trim();
-    final fridgeResult = await client
-        .from('fridges')
-        .select('id, name')
-        .ilike('code', trimmed) // case-insensitive match
-        .maybeSingle();
-
-    debugPrint('fridgeResult (by code): $fridgeResult');
-
-    if (fridgeResult == null) {
-      return {'success': false, 'message': 'Invalid fridge code'};
-    }
-
-    final fridgeId = fridgeResult['id']?.toString();
-    final fridgeName = (fridgeResult['name'] as String?) ?? 'Unknown Fridge';
-
-    if (fridgeId == null) {
-      return {'success': false, 'message': 'Invalid fridge data'};
-    }
-
-    // Check if membership already exists
-    final existingMembership = await client
-        .from('fridge_users')
-        .select('id, role')
-        .eq('user_id', uid)
-        .eq('fridge_id', fridgeId)
-        .maybeSingle();
-
-    debugPrint('existingMembership: $existingMembership');
-
-    if (existingMembership != null) {
-      return {'success': true, 'alreadyMember': true, 'fridgeId': fridgeId, 'fridgeName': fridgeName};
-    }
-
-    // Insert membership
-    dynamic insertRes;
-    try {
-      insertRes = await client.from('fridge_users').insert({
-        'user_id': uid,
-        'fridge_id': fridgeId,
-        'role': 'user',
-        'joined_at': DateTime.now().toIso8601String(),
-      }).select('id'); // don't use .single() in case some clients return list
-      debugPrint('raw insertRes: $insertRes');
-    } catch (e) {
-      debugPrint('Insert into fridge_users failed with exception: $e');
-      return {'success': false, 'message': 'Failed to join (insert failed): $e'};
-    }
-
-    // Accept lists or single maps returned by different client versions
-    Map<String, dynamic>? insertedRow;
-    try {
-      if (insertRes == null) {
-        insertedRow = null;
-      } else if (insertRes is List && insertRes.isNotEmpty) {
-        insertedRow = Map<String, dynamic>.from(insertRes.first as Map);
-      } else if (insertRes is Map) {
-        // insertedRow = Map<String, dynamic>.from(insertRes as Map);
-      } else {
-        debugPrint('Unexpected insertRes shape: ${insertRes.runtimeType} -> $insertRes');
-        insertedRow = null;
-      }
-    } catch (e) {
-      debugPrint('Error parsing insertRes: $e (raw: $insertRes)');
-      insertedRow = null;
-    }
-
-    debugPrint('parsed insertedRow: $insertedRow');
-
-    if (insertedRow == null || insertedRow['id'] == null) {
-      // There are cases where insert returns [] or {} when RLS forbids action.
-      // Query DB to check whether a membership now exists (best-effort)
-      final check = await client
-          .from('fridge_users')
-          .select('id')
-          .eq('user_id', uid)
-          .eq('fridge_id', fridgeId)
-          .maybeSingle();
-      debugPrint('post-insert check: $check');
-      if (check == null) {
-        return {'success': false, 'message': 'Failed to join fridge (no membership created). Check RLS / permissions.'};
-      }
-    }
-
-    // Success — return fridge id & name
-    return {'success': true, 'fridgeId': fridgeId, 'fridgeName': fridgeName};
-  } catch (e) {
-    debugPrint('Unexpected error in joinFridgeWithCode: $e');
-    return {'success': false, 'message': 'Error: ${e.toString()}'};
-  }
-}
-
-
-
-  /// Request to join a fridge (creates fridge_requests row)
-  Future<bool> requestToJoinFridge(String fridgeId, String message) async {
-    try {
-      final uid = client.auth.currentUser!.id;
-      await client.from('fridge_requests').insert({
-        'requester_id': uid,
-        'fridge_id': fridgeId,
-        'message': message,
-      });
-      return true;
-    } catch (e) {
-      debugPrint('Error requesting to join fridge: $e');
-      return false;
-    }
-  }
-
-  /// Create a local user for the current user's account
-  Future<void> createLocalUser(String name) async {
-    try {
-      // Ensure the current user has an account row; create if missing
-      final accountId = await _getOrCreateAccountId();
-      
-      // Create the local user
-      await client.from('local_users').insert({
-        'name': name,
-        'account_id': accountId,
-      });
-    } catch (e) {
-      debugPrint('Error creating local user: $e');
-      rethrow;
-    }
-  }
-
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = crypto.sha256.convert(bytes);
-    return digest.toString();
-  }
-
-  /// Create a local user with password (hashed on client)
-  Future<void> createLocalUserWithPassword(String name, String password) async {
-    try {
-      final accountId = await _getOrCreateAccountId();
-      await client.from('local_users').insert({
-        'name': name,
-        'account_id': accountId,
-        'password_hash': _hashPassword(password),
-      });
-    } catch (e) {
-      debugPrint('Error creating local user with password: $e');
-      rethrow;
-    }
-  }
-
-  /// Update a local user's name
-  Future<void> updateLocalUser(String userId, String newName) async {
-    try {
-      await client
-          .from('local_users')
-          .update({'name': newName})
-          .eq('id', userId);
-    } catch (e) {
-      debugPrint('Error updating local user: $e');
-      rethrow;
-    }
-  }
-
-  /// Optionally update a local user's password
-  Future<void> updateLocalUserPassword(String userId, String newPassword) async {
-    try {
-      await client
-          .from('local_users')
-          .update({'password_hash': _hashPassword(newPassword)})
-          .eq('id', userId);
-    } catch (e) {
-      debugPrint('Error updating local user password: $e');
-      rethrow;
-    }
-  }
-
-  /// Delete a local user
-  Future<void> deleteLocalUser(String userId) async {
-    try {
-      await client.from('local_users').delete().eq('id', userId);
-    } catch (e) {
-      debugPrint('Error deleting local user: $e');
-      rethrow;
-    }
-  }
-
-  /// Promote a user to admin in a specific fridge
-  Future<void> promoteUser(String userId, String fridgeId) async {
-    try {
-      await client
-          .from('fridge_users')
-          .update({'role': 'admin'})
-          .eq('user_id', userId)
-          .eq('fridge_id', fridgeId);
-    } catch (e) {
-      debugPrint('Error promoting user: $e');
-      rethrow;
-    }
-  }
-
-  /// Demote a user from admin to regular user in a specific fridge
-  Future<void> demoteUser(String userId, String fridgeId) async {
-    try {
-      await client
-          .from('fridge_users')
-          .update({'role': 'user'})
-          .eq('user_id', userId)
-          .eq('fridge_id', fridgeId);
-    } catch (e) {
-      debugPrint('Error demoting user: $e');
-      rethrow;
-    }
-  }
-
-  /// Remove a user from a fridge
-  Future<void> removeUserFromFridge(String userId, String fridgeId) async {
-    try {
-      await client
-          .from('fridge_users')
-          .delete()
-          .eq('user_id', userId)
-          .eq('fridge_id', fridgeId);
-    } catch (e) {
-      debugPrint('Error removing user from fridge: $e');
-      rethrow;
-    }
-  }
-
-  /// Approve a join request
-  Future<void> approveJoinRequest(String requestId) async {
-    try {
-      final request = await client
-          .from('fridge_requests')
-          .select('requester_id, fridge_id')
-          .eq('id', requestId)
-          .single();
-      
-      // Add user to fridge
-      await client.from('fridge_users').insert({
-        'user_id': request['requester_id'],
-        'fridge_id': request['fridge_id'],
-        'role': 'user',
-      });
-      
-      // Update request status
-      await client
-          .from('fridge_requests')
-          .update({'status': 'approved'})
-          .eq('id', requestId);
-    } catch (e) {
-      debugPrint('Error approving join request: $e');
-      rethrow;
-    }
-  }
-
-  /// Reject a join request
-  Future<void> rejectJoinRequest(String requestId) async {
-    try {
-      await client
-          .from('fridge_requests')
-          .update({'status': 'rejected'})
-          .eq('id', requestId);
-    } catch (e) {
-      debugPrint('Error rejecting join request: $e');
-      rethrow;
-    }
-  }
-
-  /// Load saved user context from local storage
-  Future<void> loadSavedUserContext() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedUserId = prefs.getString('active_local_user_id');
-      final savedUserName = prefs.getString('active_local_user_name');
-      final savedIsAdmin = prefs.getBool('is_admin_mode') ?? false;
-      
-      if (savedUserId != null && savedUserName != null) {
-        activeLocalUserId = savedUserId;
-        activeLocalUserName = savedUserName;
-        _isAdminMode = false;
-      } else if (savedIsAdmin) {
-        _isAdminMode = true;
-        activeLocalUserId = null;
-        activeLocalUserName = null;
-      }
-    } catch (e) {
-      debugPrint('Error loading saved user context: $e');
-    }
-  }
-
-  /// Save user context to local storage
-  Future<void> saveUserContext() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (activeLocalUserId != null && activeLocalUserName != null) {
-        await prefs.setString('active_local_user_id', activeLocalUserId!);
-        await prefs.setString('active_local_user_name', activeLocalUserName!);
-        await prefs.setBool('is_admin_mode', false);
-      } else if (_isAdminMode) {
-        await prefs.setBool('is_admin_mode', true);
-        await prefs.remove('active_local_user_id');
-        await prefs.remove('active_local_user_name');
-      }
-    } catch (e) {
-      debugPrint('Error saving user context: $e');
-    }
-  }
-
-  /// Clear saved user context
-  Future<void> clearUserContext() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('active_local_user_id');
-      await prefs.remove('active_local_user_name');
-      await prefs.remove('is_admin_mode');
-    } catch (e) {
-      debugPrint('Error clearing user context: $e');
-    }
-  }
-
-  // Active local user context
-  String? activeLocalUserId;
-  String? activeLocalUserName;
-  bool _isAdminMode = false;
-
-  bool get isAdminMode => _isAdminMode;
-
-  /// Verify local user password and set active local user
-  Future<bool> verifyAndSelectLocalUser(String localUserId, String password) async {
-    try {
-      final row = await client
-          .from('local_users')
-          .select('id, name, password_hash')
-          .eq('id', localUserId)
-          .maybeSingle();
-      if (row == null) return false;
-      final ok = row['password_hash'] == _hashPassword(password);
-      if (ok) {
-        activeLocalUserId = row['id'] as String;
-        activeLocalUserName = row['name'] as String?;
-        _isAdminMode = false;
-        await saveUserContext();
-      }
-      return ok;
-    } catch (e) {
-      debugPrint('Error verifying local user: $e');
-      return false;
-    }
-  }
-
-  /// Set admin mode and clear local user context
-  Future<void> setAdminMode() async {
-    _isAdminMode = true;
-    activeLocalUserId = null;
-    activeLocalUserName = null;
-    await saveUserContext();
-  }
-
-  /// Check if account has any local users
-  Future<bool> hasLocalUsers() async {
-    try {
-      final accountId = await _getOrCreateAccountId();
-      final result = await client
-          .from('local_users')
-          .select('id')
-          .eq('account_id', accountId)
-          .limit(1);
-      return result.isNotEmpty;
-    } catch (e) {
-      debugPrint('Error checking for local users: $e');
-      return false;
-    }
-  }
- 
- Future<Map<String, dynamic>?> fetchFridgeById(String fridgeId) async {
-  try {
-    final f = await client.from('fridges').select('id, name, location, created_at, user_id').eq('id', fridgeId).maybeSingle();
-    if (f == null) return null;
-    return Map<String, dynamic>.from(f as Map);
-  } catch (e) {
-    debugPrint('Error fetching fridge by id: $e');
-    return null;
-  }
- }
-
- Future<void> sendPasswordReset(String email) async {
-    await client.auth.resetPasswordForEmail(
-      email,
-      redirectTo: 'wasteless://reset',
-      // redirectTo: 'http://localhost:64055'
-      // or a deep link if mobile
-    );
-  }
-
-}
-
