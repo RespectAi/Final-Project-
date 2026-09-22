@@ -105,30 +105,13 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
           );
     }
 
-    // 3) schedule notification (best-effort)
-    try {
-      final notifyTime = expiry.subtract(Duration(days: reminderDaysBefore, hours: reminderHoursBefore));
-      if (notifyTime.isAfter(DateTime.now())) {
-        await _local.zonedSchedule(
-          itemId.hashCode,
-          'Expiry Reminder',
-          '$name expires on ${expiry.toLocal()}',
-          tz.TZDateTime.from(notifyTime, tz.local),
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'expiry_channel',
-              'Expiry Alerts',
-              channelDescription: 'Reminders for inventory expiry',
-            ),
-            iOS: DarwinNotificationDetails(),
-          ),
-          androidAllowWhileIdle: true,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          matchDateTimeComponents: DateTimeComponents.dateAndTime,
-        );
-      }
-    } catch (_) {}
+    await _scheduleExpiryReminder(
+      itemId: itemId,
+      name: name,
+      expiry: expiry,
+      reminderDaysBefore: reminderDaysBefore,
+      reminderHoursBefore: reminderHoursBefore,
+    );
 
     // Notify listeners that inventory has changed
     _inventoryController.add(null);
@@ -167,33 +150,13 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
             );
       }
 
-      // 3) schedule notification (best-effort)
-      try {
-        final expiry = itemData['expiry'] as DateTime;
-        final reminderDaysBefore = itemData['reminderDaysBefore'] as int;
-        final reminderHoursBefore = itemData['reminderHoursBefore'] as int;
-        final notifyTime = expiry.subtract(Duration(days: reminderDaysBefore, hours: reminderHoursBefore));
-        if (notifyTime.isAfter(DateTime.now())) {
-          await _local.zonedSchedule(
-            itemId.hashCode,
-            'Expiry Reminder',
-            '${itemData['name']} expires on ${expiry.toLocal()}',
-            tz.TZDateTime.from(notifyTime, tz.local),
-            NotificationDetails(
-              android: AndroidNotificationDetails(
-                'expiry_channel',
-                'Expiry Alerts',
-                channelDescription: 'Reminders for inventory expiry',
-              ),
-              iOS: DarwinNotificationDetails(),
-            ),
-            androidAllowWhileIdle: true,
-            uiLocalNotificationDateInterpretation:
-                UILocalNotificationDateInterpretation.absoluteTime,
-            matchDateTimeComponents: DateTimeComponents.dateAndTime,
-          );
-        }
-      } catch (_) {}
+      await _scheduleExpiryReminder(
+        itemId: itemId,
+        name: itemData['name'] as String,
+        expiry: itemData['expiry'] as DateTime,
+        reminderDaysBefore: itemData['reminderDaysBefore'] as int,
+        reminderHoursBefore: itemData['reminderHoursBefore'] as int,
+      );
     }
     
     // Notify listeners that inventory has changed
@@ -320,7 +283,88 @@ Stream<void> get onInventoryChanged => _inventoryController.stream;
   // Delete an inventory item by its id
   Future<void> deleteInventoryItem(String id) async {
     await client.from('inventory_items').delete().eq('id', id);
+    if (!kIsWeb) {
+      try {
+        await _local.cancel(_notificationIdForItem(id));
+      } catch (error) {
+        debugPrint('Could not cancel notification for $id: $error');
+      }
+    }
     _inventoryController.add(null);
+  }
+
+  /// Rebuilds the app's pending expiry reminders after launch. Clearing first
+  /// also removes reminders for inventory entries deleted on another device.
+  Future<void> rescheduleExpiryReminders() async {
+    if (kIsWeb) return;
+    final items = await fetchInventory();
+    try {
+      await _local.cancelAll();
+    } catch (error) {
+      debugPrint('Could not clear notifications before reschedule: $error');
+    }
+
+    for (final item in items) {
+      try {
+        await _scheduleExpiryReminder(
+          itemId: item['id'] as String,
+          name: item['name'] as String,
+          expiry: DateTime.parse(item['expiry_date'] as String),
+          reminderDaysBefore: (item['reminder_days_before'] as int?) ?? 0,
+          reminderHoursBefore: (item['reminder_hours_before'] as int?) ?? 0,
+        );
+      } catch (error) {
+        debugPrint('Could not restore reminder for ${item['id']}: $error');
+      }
+    }
+  }
+
+  Future<void> _scheduleExpiryReminder({
+    required String itemId,
+    required String name,
+    required DateTime expiry,
+    required int reminderDaysBefore,
+    required int reminderHoursBefore,
+  }) async {
+    if (kIsWeb) return;
+    final notifyTime = expiry.subtract(
+      Duration(days: reminderDaysBefore, hours: reminderHoursBefore),
+    );
+    if (!notifyTime.isAfter(DateTime.now())) return;
+
+    try {
+      await _local.zonedSchedule(
+        _notificationIdForItem(itemId),
+        'Expiry Reminder',
+        '$name expires on ${expiry.toLocal()}',
+        tz.TZDateTime.from(notifyTime, tz.local),
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'expiry_channel',
+            'Expiry Alerts',
+            channelDescription: 'Reminders for inventory expiry',
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+        androidAllowWhileIdle: true,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    } catch (error) {
+      // The item is saved even when the OS rejects a reminder, but the failure
+      // remains visible in logs instead of being silently discarded.
+      debugPrint('Could not schedule expiry reminder for $itemId: $error');
+    }
+  }
+
+  /// Generates a repeatable non-negative Android notification ID from a UUID.
+  int _notificationIdForItem(String itemId) {
+    var hash = 0x811C9DC5;
+    for (final codeUnit in itemId.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0x7fffffff;
+    }
+    return hash;
   }
 
   /// Delete a donation by its id

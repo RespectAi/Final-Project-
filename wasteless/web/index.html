@@ -31,8 +31,52 @@
 
   <title>wasteless</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    body {
+      margin: 0;
+      background-color: #f7f9f7;
+    }
+    #loading-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #2E7D32;
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid #c8e6c9;
+      border-top: 4px solid #2E7D32;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 18px;
+    }
+    .app-name {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #1b5e20;
+    }
+    .status-text {
+      font-size: 13px;
+      color: #616161;
+      margin-top: 6px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
+  <div id="loading-indicator">
+    <div class="spinner"></div>
+    <div class="app-name">WasteLess</div>
+    <div class="status-text">Loading application...</div>
+  </div>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

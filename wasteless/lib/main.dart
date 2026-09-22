@@ -45,40 +45,112 @@ void main() async {
     await flutterLocal.initialize(
       InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
       ),
     );
+    await _requestNotificationPermissions(flutterLocal);
   }
 
-  // Initialize Supabase once (safely handles hot restart)
+  // Initialize Supabase safely (handles offline state and hot restarts)
+  bool supabaseReady = false;
   try {
     await Supabase.initialize(
       url: 'https://doxhjonwexqsrksakpqo.supabase.co',
       anonKey:
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRveGhqb253ZXhxc3Jrc2FrcHFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDE5ODAsImV4cCI6MjA2Nzg3Nzk4MH0.YMUqqYHnkIT2tD8wlSJu3qePnLaXXPBZvYUmHf41RGc',
     );
+    supabaseReady = true;
   } catch (e) {
-    debugPrint('Supabase already initialized or error: $e');
+    debugPrint('Supabase initialize error or already initialized: $e');
+    try {
+      final _ = Supabase.instance.client;
+      supabaseReady = true;
+    } catch (_) {
+      supabaseReady = false;
+    }
   }
 
-  Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-  final AuthChangeEvent event = data.event;
-  final Session? session = data.session;
+  if (supabaseReady) {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final AuthChangeEvent event = data.event;
+      final Session? session = data.session;
 
-  if (event == AuthChangeEvent.passwordRecovery && session != null) {
-    navigatorKey.currentState?.pushReplacement(
-      MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
-      );
-    }
-  });
+      if (event == AuthChangeEvent.passwordRecovery && session != null) {
+        navigatorKey.currentState?.pushReplacement(
+          MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
+        );
+      }
+    });
 
-  // create single instance of SupabaseService and pass the plugin in
-  final supa = SupabaseService(flutterLocal);
+    // create single instance of SupabaseService and pass the plugin in
+    final supa = SupabaseService(flutterLocal);
 
-  runApp(WasteLessApp(
-    flutterLocal: flutterLocal,
-    supa: supa,
-  ));
+    runApp(WasteLessApp(
+      flutterLocal: flutterLocal,
+      supa: supa,
+    ));
+  } else {
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off, size: 64, color: Colors.orange),
+                const SizedBox(height: 16),
+                const Text(
+                  'Connection Failed',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Could not connect to Supabase. Please verify your internet connection and try again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black87),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () => main(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry Connection'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
+}
+
+/// Requests notification permission on platforms that require it. Android 13+
+/// and iOS otherwise suppress notifications until the user grants this.
+Future<void> _requestNotificationPermissions(
+  FlutterLocalNotificationsPlugin notifications,
+) async {
+  try {
+    await notifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestPermission();
+    await notifications
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
+    await notifications
+        .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
+  } catch (error) {
+    debugPrint('Notification permission request failed: $error');
+  }
 }
 
 class WasteLessApp extends StatelessWidget {
@@ -191,17 +263,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _rescheduleAll() async {
-    final items = await widget.supa.fetchInventory();
-    for (var item in items) {
-      try {
-        final expiry = DateTime.parse(item['expiry_date']);
-        final days = (item['reminder_days_before'] as int?) ?? 0;
-        final hours = (item['reminder_hours_before'] as int?) ?? 0;
-        final notifyTime = expiry.subtract(Duration(days: days, hours: hours));
-        if (notifyTime.isAfter(DateTime.now())) {
-          // widget.supa.scheduleNotificationForItem(...);
-        }
-      } catch (_) {}
+    try {
+      await widget.supa.rescheduleExpiryReminders();
+    } catch (error) {
+      debugPrint('Could not restore expiry reminders: $error');
     }
   }
 
