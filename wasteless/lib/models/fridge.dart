@@ -29,7 +29,7 @@ class Fridge {
       id: (source['id'] ?? map['fridge_id'])?.toString() ?? '',
       name: source['name']?.toString() ?? 'Unnamed Fridge',
       location: source['location']?.toString(),
-      inviteCode: source['invite_code']?.toString(),
+      inviteCode: (source['code'] ?? source['invite_code'])?.toString(),
       createdAt: createdAtStr != null ? DateTime.tryParse(createdAtStr) ?? DateTime.now() : DateTime.now(),
       role: map['role']?.toString(),
     );

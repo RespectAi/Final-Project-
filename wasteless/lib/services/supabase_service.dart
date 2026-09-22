@@ -229,7 +229,7 @@ class SupabaseService {
     try {
       final f = await client
           .from('fridges')
-          .select('id, name, location, created_at, user_id')
+          .select('id, name, location, created_at, user_id, code')
           .eq('id', fridgeId)
           .maybeSingle();
       if (f == null) return null;

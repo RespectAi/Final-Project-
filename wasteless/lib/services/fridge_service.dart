@@ -75,7 +75,8 @@ class FridgeService {
               id,
               name,
               location,
-              created_at
+              created_at,
+              code
             )
           ''')
           .eq('user_id', uid)
@@ -90,6 +91,7 @@ class FridgeService {
             'name': fridge['name'],
             'location': fridge['location'],
             'created_at': fridge['created_at'],
+            'code': fridge['code'],
             'role': item['role'],
             'joined_at': item['joined_at'],
           });
@@ -98,7 +100,7 @@ class FridgeService {
 
       final ownedFridges = await client
           .from('fridges')
-          .select('id, name, location, created_at')
+          .select('id, name, location, created_at, code')
           .eq('user_id', uid)
           .order('created_at', ascending: false);
 
@@ -110,6 +112,7 @@ class FridgeService {
             'name': fridge['name'],
             'location': fridge['location'],
             'created_at': fridge['created_at'],
+            'code': fridge['code'],
             'role': 'admin',
             'joined_at': fridge['created_at'],
           });
