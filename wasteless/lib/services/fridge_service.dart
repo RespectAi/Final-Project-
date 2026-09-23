@@ -245,8 +245,22 @@ class FridgeService {
     return raw.map((m) => FridgeMember.fromMap(m)).toList();
   }
 
-  /// Fetch members for a specific fridge
   Future<List<Map<String, dynamic>>> fetchFridgeMembersForFridge(String fridgeId) async {
+    // 1. Try single-query database view (eliminates N+1 queries)
+    try {
+      final viewData = await client
+          .from('view_fridge_members')
+          .select('id, user_id, role, joined_at, user_name')
+          .eq('fridge_id', fridgeId)
+          .order('joined_at', ascending: true);
+      if (viewData.isNotEmpty) {
+        return List<Map<String, dynamic>>.from(viewData);
+      }
+    } catch (_) {
+      // Fall back to client join
+    }
+
+    // 2. Client-side fallback
     try {
       final data = await client
           .from('fridge_users')

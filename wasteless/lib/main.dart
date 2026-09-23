@@ -16,7 +16,6 @@ import 'pages/dashboard_page.dart';
 import 'pages/user_page.dart';
 import 'pages/local_user_gate.dart';
 import 'services/supabase_service.dart';
-import 'widgets/common.dart';
 import 'package:flutter/foundation.dart';
 import 'pages/categories_page.dart';
 import 'pages/fridges_page.dart';
@@ -251,10 +250,16 @@ class _HomePageState extends State<HomePage> {
         _dashKey.currentState?.refresh();
       },
     ), // 2
-    DonationPage(key: _donKey, supa: widget.supa),   // 3
+    DonationPage(
+      key: _donKey,
+      supa: widget.supa,
+      onBackToHome: () {
+        _saveTabIndex(0);
+        setState(() => _currentIndex = 0);
+        _dashKey.currentState?.refresh();
+      },
+    ), // 3
   ];
-
-  static const _titles = ['WasteLess', 'Inventory', 'All Waste Logs', 'All Donations'];
 
   @override
   void initState() {
@@ -293,14 +298,8 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Dashboard, Inventory, and Waste Log have their own custom headers; other tabs use standard gradient app bar
-      appBar: (_currentIndex == 0 || _currentIndex == 1 || _currentIndex == 2)
-          ? null
-          : buildGradientAppBar(
-              context,
-              _titles[_currentIndex],
-              showBackIfCanPop: false,
-            ),
+      // All main tabs have their own custom curved headers
+      appBar: null,
       body: IndexedStack(index: _currentIndex, children: _pages),
       floatingActionButton: (_currentIndex == 1 && !(_invKey.currentState?.isSelectionActive ?? false))
           ? FloatingActionButton(

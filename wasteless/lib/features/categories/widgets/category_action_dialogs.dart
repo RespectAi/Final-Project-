@@ -519,108 +519,19 @@ class CategoryActionDialogs {
     final itemId = item['id']?.toString() ?? '';
     final itemName = (item['name'] as String?) ?? 'Item';
     final maxQty = (item['quantity'] as int?) ?? 1;
-    final recipientCtrl = TextEditingController();
-    int donateQty = 1;
 
-    showDialog(
-      context: context,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (dialogInnerCtx, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0F2FE),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.card_giftcard, color: Color(0xFF0277BD), size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text('Offer Donation', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Item: $itemName', style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: recipientCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Recipient info (shelter, person, etc.)',
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      const Text('Quantity to donate:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                      const Spacer(),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove, size: 16),
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                              padding: EdgeInsets.zero,
-                              onPressed: donateQty > 1 ? () => setDialogState(() => donateQty--) : null,
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 10),
-                              child: Text('$donateQty', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add, size: 16),
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                              padding: EdgeInsets.zero,
-                              onPressed: donateQty < maxQty ? () => setDialogState(() => donateQty++) : null,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0277BD),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () async {
-                    final info = recipientCtrl.text.trim();
-                    if (info.isEmpty) return;
-                    Navigator.pop(dialogCtx);
-                    await supa.offerDonation(itemId, info, donateQty);
-                    if (context.mounted) {
-                      showCornerToast(context, message: 'Offered $donateQty of $itemName to $info');
-                      onMutated();
-                    }
-                  },
-                  child: const Text('Donate'),
-                ),
-              ],
-            );
-          },
-        );
+    Navigator.of(context).pushNamed(
+      '/donate',
+      arguments: {
+        'id': itemId,
+        'name': itemName,
+        'quantity': maxQty,
+        'expiry': item['expiry_date'],
       },
-    );
+    ).then((res) {
+      if (res == true) {
+        onMutated();
+      }
+    });
   }
 }

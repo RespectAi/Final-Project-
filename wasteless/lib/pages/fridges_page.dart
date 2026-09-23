@@ -1955,7 +1955,15 @@ class _FridgeDetailPageState extends State<FridgeDetailPage> {
                 onMutated: _loadAll,
               );
             } else if (v == 'donate') {
-              Navigator.of(context).pushNamed(DonationPage.route, arguments: {'id': id, 'name': name});
+              Navigator.of(context).pushNamed(
+                DonationPage.route,
+                arguments: {
+                  'id': id,
+                  'name': name,
+                  'quantity': it['quantity'],
+                  'expiry': it['expiry_date'],
+                },
+              ).then((_) => _loadAll());
             } else if (v == 'waste') {
               Navigator.of(context).pushNamed(WasteLogPage.route, arguments: {'id': id, 'name': name});
             } else if (v == 'delete') {

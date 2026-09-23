@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/category.dart';
+import '../models/charity_organization.dart';
 import '../models/donation_item.dart';
 import '../models/fridge.dart';
 import '../models/fridge_member.dart';
@@ -55,6 +56,7 @@ class SupabaseService {
       client: client,
       onUpdateItemQuantity: (id, qty) => inventoryService.updateItemQuantity(id, qty),
       onDeleteInventoryItem: (id) => inventoryService.deleteInventoryItem(id),
+      onNotifyInventoryChanged: () => inventoryService.notifyInventoryChanged(),
     );
   }
 
@@ -152,11 +154,35 @@ class SupabaseService {
   Future<List<DonationItem>> fetchDonationModels() =>
       wasteDonationService.fetchDonationModels();
 
-  Future<void> offerDonation(String itemId, String recipientInfo, [int qty = 1]) =>
-      wasteDonationService.offerDonation(itemId, recipientInfo, qty);
+  Future<void> offerDonation(String itemId, String recipientInfo, [int qty = 1, String? charityId]) =>
+      wasteDonationService.offerDonation(itemId, recipientInfo, qty, charityId);
 
   Future<void> deleteDonation(String id) =>
       wasteDonationService.deleteDonation(id);
+
+  Future<void> cancelDonation(String donationId, {bool returnToInventory = true, Map<String, dynamic>? donationData}) =>
+      wasteDonationService.cancelDonation(donationId, returnToInventory: returnToInventory, donationData: donationData);
+
+  Future<void> updateDonationStatus(String donationId, String newStatus, Map<String, dynamic> existingData) =>
+      wasteDonationService.updateDonationStatus(donationId, newStatus, existingData);
+
+  Future<void> bulkCancelDonations(
+    List<Map<String, dynamic>> items, {
+    bool returnToInventory = true,
+  }) =>
+      wasteDonationService.bulkCancelDonations(items, returnToInventory: returnToInventory);
+
+  Future<void> bulkUpdateDonationStatus(
+    List<Map<String, dynamic>> items,
+    String newStatus,
+  ) =>
+      wasteDonationService.bulkUpdateDonationStatus(items, newStatus);
+
+  Future<List<CharityOrganization>> fetchCharities() =>
+      wasteDonationService.fetchCharities();
+
+  Future<void> addCustomCharity(CharityOrganization charity) =>
+      wasteDonationService.addCustomCharity(charity);
 
   // ---------------------------------------------------------------------------
   // Fridge Operations (Delegated to FridgeService)
@@ -291,7 +317,23 @@ class SupabaseService {
   // ---------------------------------------------------------------------------
 
   /// Fetch dashboard summary metrics (Active Items, Expiring in <= 48h, Meals Shared)
+  /// Attempts server-side RPC first, then falls back seamlessly to client-side logic.
   Future<Map<String, int>> fetchDashboardStats() async {
+    // 1. Attempt Server-side RPC for instant calculation
+    try {
+      final res = await client.rpc('get_dashboard_stats');
+      if (res != null && res is Map) {
+        return {
+          'activeItems': (res['total_items'] as num?)?.toInt() ?? 0,
+          'expiringSoon': (res['expiring_soon'] as num?)?.toInt() ?? 0,
+          'mealsShared': (res['meals_shared'] as num?)?.toInt() ?? 0,
+        };
+      }
+    } catch (_) {
+      // Fall back to client calculation
+    }
+
+    // 2. Client-side fallback (offline / network recovery)
     try {
       final items = await fetchInventory();
       final now = DateTime.now();

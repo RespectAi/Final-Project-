@@ -675,7 +675,17 @@ class DashboardPageState extends State<DashboardPage> {
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () {
-                                      Navigator.of(context).pushNamed(DonationPage.route, arguments: {'id': item['id'], 'name': name}).then((_) => refresh());
+                                      final rawQ = item['quantity'];
+                                      final int itemQty = (rawQ is num) ? rawQ.toInt() : (int.tryParse('$rawQ') ?? 1);
+                                      Navigator.of(context).pushNamed(
+                                        DonationPage.route,
+                                        arguments: {
+                                          'id': item['id'],
+                                          'name': name,
+                                          'quantity': itemQty,
+                                          'expiry': item['expiry_date'],
+                                        },
+                                      ).then((_) => refresh());
                                     },
                                     icon: const Icon(Icons.card_giftcard, size: 16),
                                     label: const Text('Donate', style: TextStyle(fontSize: 12)),
