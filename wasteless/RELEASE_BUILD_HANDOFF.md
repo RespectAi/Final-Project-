@@ -14,6 +14,7 @@ The following changes were made:
    - Initializes local notifications with iOS permissions disabled at initialization.
    - Explicitly requests notification permission after initialization:
      - Android 13 and later: `POST_NOTIFICATIONS` prompt.
+     - Android 12 and later: exact-alarm special access for precise reminders.
      - iOS/macOS: alert, badge, and sound permissions.
    - Restores scheduled expiry notifications when the user reaches the home screen.
 
@@ -39,13 +40,14 @@ The following changes were made:
    - Pins NDK `27.0.12077973`, because the Flutter-selected NDK `26.3.11579264`
      on this machine is incomplete (its `source.properties` file is missing).
 
-4. `android/build.gradle.kts`
-   - Supplies Android namespaces to two old plugins that do not declare one:
-     - `flutter_local_notifications` -> `com.dexterous.flutterlocalnotifications`
-     - `flutter_native_timezone` -> `com.whelksoft.flutter_native_timezone`
-   - Forces the legacy timezone plugin to use Kotlin Gradle Plugin `2.1.0`.
-     The plugin requested Kotlin `1.3.50`, while the installed Android Gradle
-     Plugin 8.7.3 requires Kotlin 1.5.20 or newer.
+4. `pubspec.yaml` and `pubspec.lock`
+   - Upgrades `flutter_local_notifications` to 17.2.4 to fix Android SDK
+     compilation and use the supported scheduling API.
+   - Replaces `flutter_native_timezone` 2.0.0 with `flutter_timezone` 3.0.1,
+     which supports the current Flutter Android embedding.
+5. `android/app/src/main/AndroidManifest.xml`
+   - Declares boot/exact-alarm permissions and notification receivers so
+     scheduled reminders can be restored after device reboot.
 
 ## What was verified
 
@@ -53,38 +55,41 @@ The following changes were made:
 - Static analysis was run successfully with no reported Dart errors.
 - The Android build advanced past the NDK error and both legacy-plugin
   namespace/Kotlin configuration errors.
-- The release build automatically accepted licenses and installed missing:
+- The release build accepted licenses and installed missing SDK components:
   - Android SDK Build-Tools 34.0.0
   - Android SDK Platform 35 (revision 2)
-  - Android SDK Platform 34 installation was in progress at the last check.
+  - Android SDK Platform 34 (revision 3)
+- The final release APK built successfully and its signature was verified.
 
 ## Build attempts and blockers encountered
 
 | Order | Result | Resolution |
 | --- | --- | --- |
 | 1 | NDK `26.3.11579264` had no `source.properties`. | Switched the project to installed NDK `27.0.12077973`. |
-| 2 | `flutter_local_notifications 12.0.4` had no Android namespace. | Added project-level namespace compatibility configuration. |
-| 3 | `flutter_native_timezone 2.0.0` had no Android namespace. | Added project-level namespace compatibility configuration. |
-| 4 | `flutter_native_timezone` requested unsupported Kotlin `1.3.50`. | Forced Kotlin Gradle Plugin `2.1.0`. |
-| 5 | Build tools/platforms needed by Gradle were absent. | Gradle began installing the required Android SDK components automatically. |
+| 2 | `flutter_local_notifications 12.0.4` had no Android namespace and failed Java compilation because `bigLargeIcon(null)` became ambiguous. | Upgraded to `flutter_local_notifications 17.2.4`, which includes the Android overload fix. |
+| 3 | `flutter_native_timezone 2.0.0` had no Android namespace and referenced Flutter's removed Android `Registrar` API. | Replaced it with the maintained `flutter_timezone 3.0.1` fork. |
+| 4 | The old timezone plugin requested unsupported Kotlin `1.3.50` and targeted a removed embedding API. | Removed that plugin and its compatibility workarounds. |
+| 5 | Build tools/platforms needed by Gradle were absent. | Gradle installed the required Android SDK components; the final build then succeeded. |
 
-The non-fatal repeated warning about `flutter_local_notifications_linux` does
-not affect Android APK output. It is a legacy package metadata warning emitted
-while Flutter scans desktop platforms.
+The earlier Linux plugin metadata warning was non-fatal and did not affect APK
+output.
 
-## Current state
+## Final build result
 
-The background command launched for the final attempt was:
+The release build completed successfully:
 
 ```powershell
-flutter build apk --release
+flutter build apk --release --no-pub -v
 ```
 
-At the final observation it was still running while Gradle installed Android
-SDK Platform 34. It had not yet reported a new compilation error and no APK
-had been produced at that time.
+The first complete build took 8m 51s because Gradle downloaded and installed
+missing Android SDK/build dependencies. The verbose log advanced throughout
+resource compilation, desugaring, packaging, and assembly; the process exited
+with code 0. An orphaned Flutter process from an earlier attempt was holding the
+Flutter cache lock and blocking new Flutter commands before they reached Gradle.
+It was stopped before the successful run.
 
-When successful, the expected output is:
+The output APK is:
 
 ```text
 build\app\outputs\flutter-apk\app-release.apk
@@ -96,11 +101,20 @@ Absolute path:
 C:\Users\Moses\Documents\PLP Febuary Chort\Python2\Flutter Assignment\Final-Project-\wasteless\build\app\outputs\flutter-apk\app-release.apk
 ```
 
+The APK is 25,609,203 bytes. `apksigner` verified its v1 and v2 signatures, and
+Android package metadata reports `com.example.wasteless`, version `1.0.0`
+(code 1), minimum SDK 21, and target SDK 35. It uses the debug key configured
+by the existing release build type, so it can be installed for testing and
+sideloading. Store distribution should use the publisher's private signing key.
+SHA-256: `B0341DE541E3254E087842EF73CF4B12232B9E62504CE0BFC15904C727DABB7D`.
+
 The final build log is written to:
 
 ```text
 build\release-build.log
 ```
+
+It ends with `BUILD SUCCESSFUL` and Flutter's `Built ...app-release.apk` line.
 
 ## Real-device test checklist
 
@@ -115,7 +129,5 @@ build\release-build.log
 
 ## Recommended future maintenance
 
-The build compatibility settings are intentionally limited to the current
-machine/toolchain. The durable maintenance task is to upgrade
-`flutter_local_notifications` and `flutter_native_timezone` to modern versions
-that natively support the installed Android Gradle Plugin and Kotlin version.
+Keep `flutter_local_notifications` and `flutter_timezone` updated within their
+compatible version ranges as the Android SDK and Flutter toolchain evolve.

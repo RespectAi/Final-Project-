@@ -62,7 +62,7 @@ class NotificationService {
           ),
           iOS: DarwinNotificationDetails(),
         ),
-        androidAllowWhileIdle: true,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
